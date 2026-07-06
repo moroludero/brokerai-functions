@@ -1,0 +1,23 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Azure Functions
+local.settings.json
+.azure/
+bin/Debug/
+bin/Release/
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+
+# IDE
+.vs/
+.vscode/
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
