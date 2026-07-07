@@ -43,10 +43,19 @@ public sealed class MediaService(
         // image messages silently undeliverable (accepted by the API, never sent).
         var container = blobService.GetBlobContainerClient(appOptions.Value.BlobContainerName);
         await container.CreateIfNotExistsAsync(Azure.Storage.Blobs.Models.PublicAccessType.Blob, cancellationToken: ct);
-        var extension = metaJson.MimeType?.Contains("png") == true ? "png" : "jpg";
-        var blobName = $"{mediaId}.{extension}";
+        var isPng = metaJson.MimeType?.Contains("png") == true;
+        var blobName = $"{mediaId}.{(isPng ? "png" : "jpg")}";
         var blobClient = container.GetBlobClient(blobName);
-        await blobClient.UploadAsync(stream, overwrite: true, cancellationToken: ct);
+        // Explicit image content type: Meta refuses to deliver images served as
+        // application/octet-stream (the blob default when no type is set).
+        var uploadOptions = new Azure.Storage.Blobs.Models.BlobUploadOptions
+        {
+            HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders
+            {
+                ContentType = isPng ? "image/png" : "image/jpeg",
+            },
+        };
+        await blobClient.UploadAsync(stream, uploadOptions, ct);
 
         return blobClient.Uri.ToString();
     }
