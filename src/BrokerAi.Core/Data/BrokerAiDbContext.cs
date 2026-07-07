@@ -55,10 +55,18 @@ public class BrokerAiDbContext(DbContextOptions<BrokerAiDbContext> options) : Db
         {
             e.Property(s => s.Type).HasConversion(sessionTypeConv).HasMaxLength(20);
             e.Property(s => s.Step).HasMaxLength(40);
+            // The ValueComparer is load-bearing: without it EF snapshots the SAME
+            // object reference, so in-place mutations of Context (adding history,
+            // setting BrokerIntake) look unchanged and are silently never saved.
+            // Comparing/snapshotting via serialized JSON makes mutations visible.
             e.Property(s => s.Context)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, JsonOpts),
-                    v => JsonSerializer.Deserialize<SessionContext>(v, JsonOpts) ?? new SessionContext())
+                    v => JsonSerializer.Deserialize<SessionContext>(v, JsonOpts) ?? new SessionContext(),
+                    new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<SessionContext>(
+                        (a, b) => JsonSerializer.Serialize(a, JsonOpts) == JsonSerializer.Serialize(b, JsonOpts),
+                        v => JsonSerializer.Serialize(v, JsonOpts).GetHashCode(),
+                        v => JsonSerializer.Deserialize<SessionContext>(JsonSerializer.Serialize(v, JsonOpts), JsonOpts) ?? new SessionContext()))
                 .HasColumnType("nvarchar(max)");
             // FIX: one session per person per broker — makes get-or-create race-safe.
             e.HasIndex(s => new { s.BrokerId, s.Phone }).IsUnique();
