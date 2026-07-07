@@ -30,12 +30,12 @@ public sealed class WhatsAppWebhookFunction(
         CancellationToken ct)
     {
         if (req.Method == "GET")
-            return HandleVerification(req);
+            return await HandleVerificationAsync(req, ct);
 
         return await HandlePostAsync(req, ct);
     }
 
-    private HttpResponseData HandleVerification(HttpRequestData req)
+    private async Task<HttpResponseData> HandleVerificationAsync(HttpRequestData req, CancellationToken ct)
     {
         var query = QueryHelpers.ParseQuery(req.Url.Query);
         var mode = query.TryGetValue("hub.mode", out var m) ? m.ToString() : null;
@@ -46,7 +46,8 @@ public sealed class WhatsAppWebhookFunction(
         {
             var ok = req.CreateResponse(HttpStatusCode.OK);
             ok.Headers.Add("Content-Type", "text/plain");
-            ok.WriteString(challenge);
+            // WriteStringAsync: the ASP.NET Core host disallows synchronous IO.
+            await ok.WriteStringAsync(challenge, ct);
             return ok;
         }
 
