@@ -136,8 +136,7 @@ namespace BrokerAi.Core.Migrations
                         name: "FK_Sessions_Leads_LeadId",
                         column: x => x.LeadId,
                         principalTable: "Leads",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -171,8 +170,7 @@ namespace BrokerAi.Core.Migrations
                         name: "FK_AdCampaigns_Properties_PropertyId",
                         column: x => x.PropertyId,
                         principalTable: "Properties",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateIndex(

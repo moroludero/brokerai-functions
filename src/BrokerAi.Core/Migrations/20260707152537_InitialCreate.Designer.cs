@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BrokerAi.Core.Migrations
 {
     [DbContext(typeof(BrokerAiDbContext))]
-    [Migration("20260706212527_InitialCreate")]
+    [Migration("20260707152537_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -344,7 +344,7 @@ namespace BrokerAi.Core.Migrations
                     b.HasOne("BrokerAi.Core.Data.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Broker");
 
@@ -384,7 +384,7 @@ namespace BrokerAi.Core.Migrations
                     b.HasOne("BrokerAi.Core.Data.Entities.Lead", "Lead")
                         .WithMany()
                         .HasForeignKey("LeadId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Broker");
 

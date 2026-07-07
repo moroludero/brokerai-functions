@@ -64,8 +64,11 @@ public class BrokerAiDbContext(DbContextOptions<BrokerAiDbContext> options) : Db
             e.HasIndex(s => new { s.BrokerId, s.Phone }).IsUnique();
             e.HasOne(s => s.Broker).WithMany()
                 .HasForeignKey(s => s.BrokerId).OnDelete(DeleteBehavior.Cascade);
+            // NoAction instead of SetNull: SQL Server rejects multiple cascade paths
+            // (Broker→Sessions cascade + Broker→Leads→Sessions). Broker deletion still
+            // removes sessions via the direct cascade; leads are never deleted alone.
             e.HasOne(s => s.Lead).WithMany()
-                .HasForeignKey(s => s.LeadId).OnDelete(DeleteBehavior.SetNull);
+                .HasForeignKey(s => s.LeadId).OnDelete(DeleteBehavior.NoAction);
         });
 
         mb.Entity<Property>(e =>
@@ -84,8 +87,9 @@ public class BrokerAiDbContext(DbContextOptions<BrokerAiDbContext> options) : Db
             e.HasIndex(c => new { c.BrokerId, c.Status });
             e.HasOne(c => c.Broker).WithMany()
                 .HasForeignKey(c => c.BrokerId).OnDelete(DeleteBehavior.Cascade);
+            // NoAction for the same multiple-cascade-path reason as Sessions→Leads.
             e.HasOne(c => c.Property).WithMany()
-                .HasForeignKey(c => c.PropertyId).OnDelete(DeleteBehavior.SetNull);
+                .HasForeignKey(c => c.PropertyId).OnDelete(DeleteBehavior.NoAction);
         });
 
         mb.Entity<ProcessedMessage>(e =>

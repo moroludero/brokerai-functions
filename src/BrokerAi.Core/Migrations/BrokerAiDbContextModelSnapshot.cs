@@ -341,7 +341,7 @@ namespace BrokerAi.Core.Migrations
                     b.HasOne("BrokerAi.Core.Data.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Broker");
 
@@ -381,7 +381,7 @@ namespace BrokerAi.Core.Migrations
                     b.HasOne("BrokerAi.Core.Data.Entities.Lead", "Lead")
                         .WithMany()
                         .HasForeignKey("LeadId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Broker");
 
