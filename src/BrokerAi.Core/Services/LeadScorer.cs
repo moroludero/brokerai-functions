@@ -33,4 +33,15 @@ public static class LeadScorer
 
         return new Result(score, score >= HotThreshold && !lead.AlertSent);
     }
+
+    /// <summary>
+    /// A lead who scanned a specific property's cartel QR and gave visit
+    /// availability is always alert-worthy: the additive scale is sale-oriented
+    /// (points for $1M+ budgets), so rental QR leads — implied budget = monthly
+    /// rent — could mathematically never reach the hot threshold.
+    /// </summary>
+    public static bool IsQrVisitHot(Lead lead, string? qrShortCode) =>
+        qrShortCode is not null &&
+        !string.IsNullOrWhiteSpace(lead.VisitAvailability) &&
+        !lead.AlertSent;
 }

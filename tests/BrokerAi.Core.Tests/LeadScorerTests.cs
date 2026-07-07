@@ -105,4 +105,32 @@ public class LeadScorerTests
 
         result.Score.Should().Be(20);
     }
+
+    [Fact]
+    public void IsQrVisitHot_RentalQrLeadWithVisit_AlwaysHot()
+    {
+        // Rental QR lead: implied budget = monthly rent → score 60 < 70, but they
+        // scheduled a visit for a concrete property — must alert regardless.
+        var lead = BaseLead();
+        lead.BudgetMax = 11_000;
+        lead.Zone = "Cancún Centro";
+        lead.PropertyType = "casa";
+        lead.VisitAvailability = "El jueves a las 3 de la tarde";
+
+        LeadScorer.Score(lead).IsHot.Should().BeFalse("the sale-oriented scale caps rentals at 60");
+        LeadScorer.IsQrVisitHot(lead, "CASA-001").Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsQrVisitHot_RequiresQrAndVisitAndNoDedup()
+    {
+        var lead = BaseLead();
+        lead.VisitAvailability = "sábado 10am";
+
+        LeadScorer.IsQrVisitHot(lead, null).Should().BeFalse("no QR scan");
+        LeadScorer.IsQrVisitHot(BaseLead(), "CASA-001").Should().BeFalse("no visit availability");
+
+        lead.AlertSent = true;
+        LeadScorer.IsQrVisitHot(lead, "CASA-001").Should().BeFalse("alert already sent");
+    }
 }

@@ -168,7 +168,11 @@ public sealed class ProcessMessageFunction(
             var scoreResult = LeadScorer.Score(lead);
             lead.Score = scoreResult.Score;
 
-            if (scoreResult.IsHot)
+            // QR + scheduled visit always alerts — the point scale is sale-oriented
+            // and would never mark a rental QR lead hot (rent price ≠ $1M budget).
+            var isHot = scoreResult.IsHot || LeadScorer.IsQrVisitHot(lead, session.Context.QrShortCode);
+
+            if (isHot)
             {
                 lead.AlertSent = true;
                 lead.Status = LeadStatus.Hot;
