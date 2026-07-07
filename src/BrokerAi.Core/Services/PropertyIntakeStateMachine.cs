@@ -36,12 +36,19 @@ public static class PropertyIntakeStateMachine
         switch (step)
         {
             case IntakeSteps.ListingTypeStep:
-                if (norm.Contains("venta") || norm.Contains("vender") || norm.Contains("compra"))
-                    data.ListingType = "venta";
-                else if (norm.Contains("renta") || norm.Contains("rentar") || norm.Contains("alquil"))
-                    data.ListingType = "renta";
-                else if (norm.Contains("ambos") || norm.Contains("los dos") || norm.Contains("ambas"))
+                // Match on stems so conjugations work: "que se rente", "venderla",
+                // "para arrendar". Both stems present (e.g. "venta y renta") = ambos.
+                var wantsVenta = norm.Contains("venta") || norm.Contains("vend") || norm.Contains("compra");
+                var wantsRenta = norm.Contains("rent") || norm.Contains("alquil") || norm.Contains("arrend");
+                var wantsAmbos = norm.Contains("ambos") || norm.Contains("ambas") ||
+                                 norm.Contains("los dos") || norm.Contains("las dos") ||
+                                 (wantsVenta && wantsRenta);
+                if (wantsAmbos)
                     data.ListingType = "ambos";
+                else if (wantsVenta)
+                    data.ListingType = "venta";
+                else if (wantsRenta)
+                    data.ListingType = "renta";
                 else
                 {
                     reply = "¿Es para *venta*, *renta* o *ambos*?";

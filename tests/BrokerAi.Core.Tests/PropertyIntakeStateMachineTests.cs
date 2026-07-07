@@ -13,9 +13,14 @@ public class PropertyIntakeStateMachineTests
     [Theory]
     [InlineData("venta", "venta")]
     [InlineData("Quiero vender", "venta")]
+    [InlineData("venderla", "venta")]
     [InlineData("es para renta", "renta")]
+    [InlineData("quiero que se rente", "renta")]
+    [InlineData("para arrendar", "renta")]
+    [InlineData("alquilarla", "renta")]
     [InlineData("ambos", "ambos")]
     [InlineData("los dos", "ambos")]
+    [InlineData("venta y renta", "ambos")]
     public void ListingType_ValidInput_AdvancesToType(string input, string expectedListingType)
     {
         var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.ListingTypeStep), input, null);
