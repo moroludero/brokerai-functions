@@ -35,8 +35,13 @@ public sealed class ProcessMessageFunction(
         [QueueTrigger("incoming-messages")] string queueItem,
         CancellationToken ct)
     {
-        var msg = JsonSerializer.Deserialize<IncomingMessage>(Convert.FromBase64String(queueItem))
-            ?? JsonSerializer.Deserialize<IncomingMessage>(queueItem)
+        // The queue extension base64-decodes the message before invoking us, so
+        // queueItem is already the JSON produced by the webhook. Only attempt a
+        // base64 decode if it clearly isn't JSON (defensive for manual requeues).
+        var payload = queueItem.TrimStart().StartsWith('{')
+            ? queueItem
+            : System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(queueItem));
+        var msg = JsonSerializer.Deserialize<IncomingMessage>(payload)
             ?? throw new InvalidOperationException("Empty queue message");
 
         // Idempotency: Meta redelivers, and queue retries can re-run.
