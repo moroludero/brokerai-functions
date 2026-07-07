@@ -39,12 +39,53 @@ public static class LeadQualificationEngine
         if (extraction.Language is "en" or "es") lead.Language = extraction.Language;
     }
 
-    /// <summary>Pre-fill lead fields from a QR-scanned property (zone + type already chosen).</summary>
+    /// <summary>
+    /// Pre-fill lead fields from a QR-scanned property. They chose this exact
+    /// property, so zone/type/goal are known, and its price stands in for their
+    /// budget — a QR lead is never interrogated about budget unless they decline
+    /// the property (then everything here is cleared and normal flow restarts).
+    /// </summary>
     public static void ApplyQrProperty(Lead lead, Property property)
     {
         lead.Zone ??= property.Zone;
         lead.PropertyType ??= property.Kind?.ToString().ToLowerInvariant();
-        if (lead.Goal is null && property.ListingKind == ListingType.Renta) lead.Goal = LeadGoal.Rentar;
+        if (lead.Goal is null)
+        {
+            lead.Goal = property.ListingKind switch
+            {
+                ListingType.Renta => LeadGoal.Rentar,
+                ListingType.Venta => LeadGoal.Comprar,
+                _ => null, // "ambos": let them tell us
+            };
+        }
+        var impliedBudget = property.ListingKind == ListingType.Renta ? property.RentPrice : property.Price;
+        lead.BudgetMax ??= impliedBudget;
+        lead.BudgetMin ??= impliedBudget;
+    }
+
+    /// <summary>
+    /// Heuristic: the QR lead is passing on the scanned property ("no me parece",
+    /// "no gracias", "muy caro", "otra opción") rather than giving availability.
+    /// </summary>
+    public static bool IsQrDecline(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var norm = TextNormalizer.Normalize(text);
+        if (norm == "no" || norm.StartsWith("no ") || norm.StartsWith("no,")) return true;
+        return norm.Contains("no me") || norm.Contains("no gracias") || norm.Contains("no quiero") ||
+               norm.Contains("muy car") || norm.Contains("otra opcion") || norm.Contains("otras opciones") ||
+               norm.Contains("algo mas") || norm.Contains("algo diferente") || norm.Contains("no es lo que");
+    }
+
+    /// <summary>Clears the QR pre-fills so normal qualification restarts after a decline.</summary>
+    public static void ClearQrPrefill(Lead lead)
+    {
+        lead.Zone = null;
+        lead.PropertyType = null;
+        lead.Goal = null;
+        lead.BudgetMin = null;
+        lead.BudgetMax = null;
+        lead.VisitAvailability = null;
     }
 
     /// <summary>

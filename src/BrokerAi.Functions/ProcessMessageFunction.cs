@@ -95,31 +95,54 @@ public sealed class ProcessMessageFunction(
                 LeadQualificationEngine.ApplyQrProperty(lead, qrProperty);
                 session.Context.QrShortCode = qrShortCode;
 
-                // The lead scanned this exact property's sign — show it to them
-                // (photo with caption when available) before continuing qualification.
-                var card = LeadQualificationEngine.BuildPropertyCard(qrProperty);
-                if (!string.IsNullOrWhiteSpace(qrProperty.ImageUrl))
+                // The lead scanned this exact property's sign: show the property and
+                // invite them to schedule a visit — no budget interrogation. Card and
+                // invitation go in ONE message: WhatsApp doesn't guarantee ordering
+                // across messages, and a separate image reliably arrives after text.
+                var card = LeadQualificationEngine.BuildPropertyCard(qrProperty) +
+                           "\n\nSi te parece bien, ¿qué día y hora te acomoda para agendar una visita? 📅";
+                // WhatsApp image captions cap at ~1024 chars — fall back to text if long.
+                if (!string.IsNullOrWhiteSpace(qrProperty.ImageUrl) && card.Length <= 1000)
                     await sender.SendImageAsync(msg.PhoneNumberId, msg.From, qrProperty.ImageUrl, card, ct);
                 else
                     await sender.SendTextAsync(msg.PhoneNumberId, msg.From, card, ct);
+
                 session.Context.History.Add(new TurnRecord { Role = "assistant", Content = card });
+                session.Step = LeadSteps.VisitAvailability;
+                lead.Status = LeadStatus.Qualifying;
+                lead.UpdatedAt = DateTimeOffset.UtcNow;
+                session.LastMessageAt = DateTimeOffset.UtcNow;
+                await db.SaveChangesAsync(ct);
+                return;
             }
-            else
-            {
-                logger.LogWarning("QR code {ShortCode} scanned but no matching property found", qrShortCode);
-            }
+            logger.LogWarning("QR code {ShortCode} scanned but no matching property found", qrShortCode);
+        }
+
+        // QR follow-up: they were invited to schedule a visit for the scanned
+        // property. If they decline it, forget the property's pre-fills and run
+        // normal qualification (budget, zone, type...) for the same message.
+        var qrDeclined = false;
+        if (session.Context.QrShortCode is not null &&
+            session.Step == LeadSteps.VisitAvailability &&
+            LeadQualificationEngine.IsQrDecline(msg.Text))
+        {
+            LeadQualificationEngine.ClearQrPrefill(lead);
+            session.Context.QrShortCode = null;
+            session.Step = LeadSteps.Greeting;
+            qrDeclined = true;
         }
 
         if (qrShortCode is null && !string.IsNullOrWhiteSpace(msg.Text))
         {
             var extraction = await claude.ClassifyAsync(msg.Text, ct);
-            if (extraction.IsOffTopic)
+            if (extraction.IsOffTopic && !qrDeclined)
             {
                 await sender.SendTextAsync(msg.PhoneNumberId, msg.From, LeadQualificationEngine.OffTopicReply, ct);
                 await db.SaveChangesAsync(ct);
                 return;
             }
-            LeadQualificationEngine.MergeExtraction(lead, extraction);
+            if (!extraction.IsOffTopic)
+                LeadQualificationEngine.MergeExtraction(lead, extraction);
         }
 
         // Plan gate on first contact only.
@@ -168,8 +191,11 @@ public sealed class ProcessMessageFunction(
         }
         else
         {
-            session.Context.History.Add(new TurnRecord { Role = "assistant", Content = output.Reply });
-            await sender.SendTextAsync(msg.PhoneNumberId, msg.From, output.Reply, ct);
+            var reply = qrDeclined
+                ? $"Sin problema 👍 Busquemos otra opción para ti. {output.Reply}"
+                : output.Reply;
+            session.Context.History.Add(new TurnRecord { Role = "assistant", Content = reply });
+            await sender.SendTextAsync(msg.PhoneNumberId, msg.From, reply, ct);
         }
 
         session.LastMessageAt = DateTimeOffset.UtcNow;

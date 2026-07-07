@@ -136,6 +136,63 @@ public class LeadQualificationEngineTests
     }
 
     [Fact]
+    public void ApplyQrProperty_Venta_SetsComprarGoalAndImpliedBudget()
+    {
+        var lead = NewLead();
+        var property = new Property
+        {
+            BrokerId = Guid.NewGuid(),
+            Title = "Casa Tulum",
+            Zone = Zones.Tulum,
+            Kind = PropertyKind.Casa,
+            ListingKind = ListingType.Venta,
+            Price = 2_500_000,
+        };
+
+        LeadQualificationEngine.ApplyQrProperty(lead, property);
+
+        lead.Goal.Should().Be(LeadGoal.Comprar);
+        lead.BudgetMax.Should().Be(2_500_000, "the scanned property's price implies the budget — QR leads are never asked for budget");
+        lead.BudgetMin.Should().Be(2_500_000);
+    }
+
+    [Theory]
+    [InlineData("no", true)]
+    [InlineData("No gracias", true)]
+    [InlineData("no me parece", true)]
+    [InlineData("está muy cara", true)]
+    [InlineData("tienes otra opción?", true)]
+    [InlineData("busco algo más barato", true)]
+    [InlineData("el sábado a las 10", false)]
+    [InlineData("sí me parece bien, el jueves", false)]
+    [InlineData("mañana por la tarde", false)]
+    public void IsQrDecline_DetectsRejections(string text, bool expected)
+    {
+        LeadQualificationEngine.IsQrDecline(text).Should().Be(expected);
+    }
+
+    [Fact]
+    public void ClearQrPrefill_ResetsEverythingForNormalQualification()
+    {
+        var lead = NewLead();
+        lead.Zone = Zones.Tulum;
+        lead.PropertyType = "casa";
+        lead.Goal = LeadGoal.Comprar;
+        lead.BudgetMax = 2_500_000;
+        lead.BudgetMin = 2_500_000;
+
+        LeadQualificationEngine.ClearQrPrefill(lead);
+
+        lead.Zone.Should().BeNull();
+        lead.PropertyType.Should().BeNull();
+        lead.Goal.Should().BeNull();
+        lead.BudgetMax.Should().BeNull();
+        // Cleared lead restarts qualification from the first question
+        LeadQualificationEngine.Advance(lead, LeadSteps.Greeting, "Ana", false)
+            .NextStep.Should().Be(LeadSteps.ListingTypeStep);
+    }
+
+    [Fact]
     public void BuildPropertyCard_Venta_ShowsSalePriceAndDetails()
     {
         var property = new Property
