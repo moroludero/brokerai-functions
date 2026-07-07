@@ -123,6 +123,24 @@ public static class LeadQualificationEngine
         return $"{typeLabel} — *{property.Title}*\n📍 {property.Zone}\n{priceLine}{rooms}{description}{video}";
     }
 
+    /// <summary>
+    /// Full first message for a QR-scanning lead. Real-estate sales practice:
+    /// warm personalized greeting, enthusiasm for THEIR choice, the property
+    /// details, and a single low-pressure call to action ("sin compromiso") —
+    /// people book visits when it feels easy, not when it feels like a form.
+    /// </summary>
+    public static string BuildQrWelcome(Property property, string? leadName, string brokerName)
+    {
+        var firstName = string.IsNullOrWhiteSpace(leadName) ? null : leadName.Trim().Split(' ')[0];
+        var hola = firstName is null ? "¡Hola! 👋" : $"¡Hola, {firstName}! 👋";
+
+        return
+            $"{hola} Qué gusto que te interese esta propiedad — es una excelente elección. " +
+            $"Te comparto los detalles:\n\n{BuildPropertyCard(property)}\n\n" +
+            $"¿Te gustaría conocerla en persona? Con gusto te coordino una visita sin compromiso — " +
+            $"solo dime qué día y hora te acomodan 📅";
+    }
+
     /// <summary>Decide the next question/step after extraction has been merged.</summary>
     public static Output Advance(Lead lead, string currentStep, string brokerName, bool isFirstMessage)
     {

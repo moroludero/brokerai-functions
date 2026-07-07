@@ -33,10 +33,12 @@ public class ShortCodeGeneratorTests
     }
 
     [Fact]
-    public void QrLink_EncodesSharedNumberAndShortCode()
+    public void QrLink_UsesNaturalPrefillTextContainingTheCode()
     {
         var link = ShortCodeGenerator.QrLink("529981234567", "CASA-001");
 
-        link.Should().Be("https://wa.me/529981234567?text=PROP:CASA-001");
+        link.Should().StartWith("https://wa.me/529981234567?text=");
+        Uri.UnescapeDataString(link).Should().Contain("CASA-001")
+            .And.Contain("Hola", "the prefill must read like a human message so leads don't delete it");
     }
 }

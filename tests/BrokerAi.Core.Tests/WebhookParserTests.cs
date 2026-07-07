@@ -126,4 +126,38 @@ public class WebhookParserTests
         result.Skip.Should().BeTrue();
         result.Reason.Should().Be("invalid_json");
     }
+
+    [Fact]
+    public void Parse_ContactsProfile_CapturesLeadName()
+    {
+        const string body = """
+            {
+              "entry": [{
+                "changes": [{
+                  "value": {
+                    "metadata": { "phone_number_id": "1234567890" },
+                    "contacts": [{ "profile": { "name": "María López" }, "wa_id": "5219981234567" }],
+                    "messages": [{ "from": "5219981234567", "id": "wamid.n", "type": "text",
+                                   "timestamp": "1700000000", "text": { "body": "hola" } }]
+                  }
+                }]
+              }]
+            }
+            """;
+
+        var result = WebhookParser.Parse(body);
+
+        result.Message!.ProfileName.Should().Be("María López");
+    }
+
+    [Fact]
+    public void Parse_NoContacts_ProfileNameIsNull()
+    {
+        var body = EnvelopeWithMessage("""
+            { "from": "529981234567", "id": "wamid.nc", "type": "text", "timestamp": "1700000000",
+              "text": { "body": "hola" } }
+            """);
+
+        WebhookParser.Parse(body).Message!.ProfileName.Should().BeNull();
+    }
 }

@@ -82,6 +82,11 @@ public sealed class ProcessMessageFunction(
         var lead = await GetOrCreateLeadAsync(broker.Id, msg.From, ct);
         var isFirstMessage = session.Step == LeadSteps.Greeting && lead.CreatedAt == lead.UpdatedAt;
 
+        // WhatsApp sends the sender's profile display name with every message —
+        // free name capture, so the hot-lead alert can identify the person.
+        if (string.IsNullOrWhiteSpace(lead.Name) && !string.IsNullOrWhiteSpace(msg.ProfileName))
+            lead.Name = msg.ProfileName;
+
         session.Context.History.Add(new TurnRecord { Role = "user", Content = msg.Text ?? "" });
 
         // QR scan short-circuits before any AI call.
@@ -95,12 +100,11 @@ public sealed class ProcessMessageFunction(
                 LeadQualificationEngine.ApplyQrProperty(lead, qrProperty);
                 session.Context.QrShortCode = qrShortCode;
 
-                // The lead scanned this exact property's sign: show the property and
-                // invite them to schedule a visit — no budget interrogation. Card and
-                // invitation go in ONE message: WhatsApp doesn't guarantee ordering
-                // across messages, and a separate image reliably arrives after text.
-                var card = LeadQualificationEngine.BuildPropertyCard(qrProperty) +
-                           "\n\nSi te parece bien, ¿qué día y hora te acomoda para agendar una visita? 📅";
+                // The lead scanned this exact property's sign: warm personalized
+                // greeting + property details + low-pressure visit invitation, all
+                // in ONE message (WhatsApp doesn't guarantee ordering across
+                // messages, and a separate image reliably arrives after text).
+                var card = LeadQualificationEngine.BuildQrWelcome(qrProperty, lead.Name, broker.Name);
                 // WhatsApp image captions cap at ~1024 chars — fall back to text if long.
                 if (!string.IsNullOrWhiteSpace(qrProperty.ImageUrl) && card.Length <= 1000)
                     await sender.SendImageAsync(msg.PhoneNumberId, msg.From, qrProperty.ImageUrl, card, ct);

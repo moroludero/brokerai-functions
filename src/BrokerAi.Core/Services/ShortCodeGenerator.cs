@@ -26,9 +26,17 @@ public static class ShortCodeGenerator
         return $"{prefix}-{existingCountOfType + 1:D3}";
     }
 
+    /// <summary>
+    /// Pre-filled text the QR puts in the lead's WhatsApp. Reads like something a
+    /// person would send (so they hit Send instead of deleting it) while still
+    /// carrying the short code QrDetector extracts.
+    /// </summary>
+    public static string QrPrefillText(string shortCode) =>
+        $"¡Hola! 👋 Vi el anuncio de la propiedad {shortCode} y me gustaría recibir más información 🏠";
+
     /// <summary>wa.me deep link the cartel QR encodes. botNumber = broker's own number or the shared pilot number.</summary>
     public static string QrLink(string botNumber, string shortCode) =>
-        $"https://wa.me/{botNumber}?text=PROP:{shortCode}";
+        $"https://wa.me/{botNumber}?text={Uri.EscapeDataString(QrPrefillText(shortCode))}";
 
     public static string QrImageUrl(string botNumber, string shortCode) =>
         $"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={Uri.EscapeDataString(QrLink(botNumber, shortCode))}";

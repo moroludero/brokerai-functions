@@ -28,4 +28,8 @@ public sealed class IncomingMessage
 
     [JsonPropertyName("is_voice")]
     public bool IsVoice { get; set; }
+
+    /// <summary>WhatsApp profile display name from contacts[].profile.name — free lead-name capture.</summary>
+    [JsonPropertyName("profile_name")]
+    public string? ProfileName { get; set; }
 }

@@ -218,6 +218,28 @@ public class LeadQualificationEngineTests
     }
 
     [Fact]
+    public void BuildQrWelcome_PersonalizesGreetingAndInvitesVisit()
+    {
+        var property = new Property
+        {
+            BrokerId = Guid.NewGuid(),
+            Title = "casa en Tulum",
+            Zone = Zones.Tulum,
+            Kind = PropertyKind.Casa,
+            ListingKind = ListingType.Renta,
+            RentPrice = 11_000,
+        };
+
+        var withName = LeadQualificationEngine.BuildQrWelcome(property, "María López García", "Ana Broker");
+        withName.Should().StartWith("¡Hola, María!");
+        withName.Should().Contain("11,000").And.Contain("Tulum");
+        withName.Should().Contain("sin compromiso").And.Contain("día y hora");
+
+        var withoutName = LeadQualificationEngine.BuildQrWelcome(property, null, "Ana Broker");
+        withoutName.Should().StartWith("¡Hola! 👋");
+    }
+
+    [Fact]
     public void BuildPropertyCard_Renta_ShowsMonthlyRent()
     {
         var property = new Property

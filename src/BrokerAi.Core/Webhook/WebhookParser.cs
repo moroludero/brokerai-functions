@@ -43,6 +43,16 @@ public static class WebhookParser
 
             long.TryParse(GetString(message, "timestamp"), out var timestamp);
 
+            // WhatsApp includes the sender's profile display name — free name capture.
+            string? profileName = null;
+            if (value.TryGetProperty("contacts", out var contacts) &&
+                contacts.ValueKind == JsonValueKind.Array && contacts.GetArrayLength() > 0 &&
+                contacts[0].TryGetProperty("profile", out var profile))
+            {
+                profileName = GetString(profile, "name")?.Trim();
+                if (string.IsNullOrWhiteSpace(profileName)) profileName = null;
+            }
+
             var msg = new IncomingMessage
             {
                 From = from,
@@ -50,6 +60,7 @@ public static class WebhookParser
                 MessageId = messageId,
                 Type = messageType,
                 Timestamp = timestamp,
+                ProfileName = profileName,
             };
 
             switch (messageType)
