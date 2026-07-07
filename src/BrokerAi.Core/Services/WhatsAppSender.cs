@@ -9,6 +9,7 @@ public interface IWhatsAppSender
 {
     Task SendTextAsync(string phoneNumberId, string to, string body, CancellationToken ct = default);
     Task SendContactCardAsync(string phoneNumberId, string to, string name, string phone, CancellationToken ct = default);
+    Task SendImageAsync(string phoneNumberId, string to, string imageUrl, string caption, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -47,6 +48,18 @@ public sealed class WhatsAppSender(HttpClient http, IOptions<MetaOptions> option
                     phones = new[] { new { phone = $"+{phone}", type = "CELL" } },
                 },
             },
+        };
+        await PostAsync(phoneNumberId, payload, ct);
+    }
+
+    public async Task SendImageAsync(string phoneNumberId, string to, string imageUrl, string caption, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            to,
+            type = "image",
+            image = new { link = imageUrl, caption },
         };
         await PostAsync(phoneNumberId, payload, ct);
     }

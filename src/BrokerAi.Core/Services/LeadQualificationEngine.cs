@@ -1,3 +1,4 @@
+using System.Globalization;
 using BrokerAi.Core.Data.Entities;
 using BrokerAi.Core.Domain;
 
@@ -44,6 +45,41 @@ public static class LeadQualificationEngine
         lead.Zone ??= property.Zone;
         lead.PropertyType ??= property.Kind?.ToString().ToLowerInvariant();
         if (lead.Goal is null && property.ListingKind == ListingType.Renta) lead.Goal = LeadGoal.Rentar;
+    }
+
+    /// <summary>
+    /// Property card shown to a lead who scanned the cartel QR — they chose this
+    /// exact property, so the bot presents it before continuing qualification.
+    /// </summary>
+    public static string BuildPropertyCard(Property property)
+    {
+        var mx = CultureInfo.GetCultureInfo("es-MX");
+        var typeLabel = property.Kind switch
+        {
+            PropertyKind.Casa => "🏡 Casa",
+            PropertyKind.Depto => "🏢 Departamento",
+            PropertyKind.Terreno => "🌿 Terreno",
+            PropertyKind.Comercial => "🏪 Local Comercial",
+            _ => "🏠 Propiedad",
+        };
+        var priceLine = property.ListingKind switch
+        {
+            ListingType.Renta => $"💰 ${(property.RentPrice ?? 0).ToString("N0", mx)} MXN/mes",
+            ListingType.Ambos =>
+                $"💰 Venta: ${(property.Price ?? 0).ToString("N0", mx)} MXN · Renta: ${(property.RentPrice ?? 0).ToString("N0", mx)} MXN/mes",
+            _ => $"💰 ${(property.Price ?? 0).ToString("N0", mx)} MXN",
+        };
+        var rooms = property.Bedrooms.HasValue
+            ? $"\n🛏 {property.Bedrooms} rec · 🚿 {property.Bathrooms} baños"
+            : "";
+        var description = string.IsNullOrWhiteSpace(property.Description)
+            ? ""
+            : $"\n\n{property.Description}";
+        var video = string.IsNullOrWhiteSpace(property.VideoUrl)
+            ? ""
+            : $"\n🎥 Tour virtual: {property.VideoUrl}";
+
+        return $"{typeLabel} — *{property.Title}*\n📍 {property.Zone}\n{priceLine}{rooms}{description}{video}";
     }
 
     /// <summary>Decide the next question/step after extraction has been merged.</summary>

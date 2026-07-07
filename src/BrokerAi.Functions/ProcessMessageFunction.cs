@@ -94,6 +94,19 @@ public sealed class ProcessMessageFunction(
             {
                 LeadQualificationEngine.ApplyQrProperty(lead, qrProperty);
                 session.Context.QrShortCode = qrShortCode;
+
+                // The lead scanned this exact property's sign — show it to them
+                // (photo with caption when available) before continuing qualification.
+                var card = LeadQualificationEngine.BuildPropertyCard(qrProperty);
+                if (!string.IsNullOrWhiteSpace(qrProperty.ImageUrl))
+                    await sender.SendImageAsync(msg.PhoneNumberId, msg.From, qrProperty.ImageUrl, card, ct);
+                else
+                    await sender.SendTextAsync(msg.PhoneNumberId, msg.From, card, ct);
+                session.Context.History.Add(new TurnRecord { Role = "assistant", Content = card });
+            }
+            else
+            {
+                logger.LogWarning("QR code {ShortCode} scanned but no matching property found", qrShortCode);
             }
         }
 

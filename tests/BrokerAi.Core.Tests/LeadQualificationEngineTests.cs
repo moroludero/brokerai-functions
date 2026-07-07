@@ -134,4 +134,47 @@ public class LeadQualificationEngineTests
     {
         LeadQualificationEngine.OffTopicReply.Should().NotBeNullOrWhiteSpace();
     }
+
+    [Fact]
+    public void BuildPropertyCard_Venta_ShowsSalePriceAndDetails()
+    {
+        var property = new Property
+        {
+            BrokerId = Guid.NewGuid(),
+            Title = "casa en Tulum",
+            Zone = Zones.Tulum,
+            Kind = PropertyKind.Casa,
+            ListingKind = ListingType.Venta,
+            Price = 2_500_000,
+            Bedrooms = 3,
+            Bathrooms = 2,
+            Description = "Hermosa casa con alberca",
+        };
+
+        var card = LeadQualificationEngine.BuildPropertyCard(property);
+
+        card.Should().Contain("Casa").And.Contain("casa en Tulum");
+        card.Should().Contain("2,500,000").And.Contain("MXN");
+        card.Should().Contain("3 rec").And.Contain("2 baños");
+        card.Should().Contain("Hermosa casa con alberca");
+        card.Should().NotContain("Tour virtual");
+    }
+
+    [Fact]
+    public void BuildPropertyCard_Renta_ShowsMonthlyRent()
+    {
+        var property = new Property
+        {
+            BrokerId = Guid.NewGuid(),
+            Title = "depto en Playa",
+            Zone = Zones.PlayaDelCarmen,
+            Kind = PropertyKind.Depto,
+            ListingKind = ListingType.Renta,
+            RentPrice = 15_000,
+        };
+
+        var card = LeadQualificationEngine.BuildPropertyCard(property);
+
+        card.Should().Contain("15,000").And.Contain("/mes");
+    }
 }
