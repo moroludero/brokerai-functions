@@ -38,9 +38,11 @@ public sealed class MediaService(
         mediaResponse.EnsureSuccessStatusCode();
         await using var stream = await mediaResponse.Content.ReadAsStreamAsync(ct);
 
-        // Step 3: upload to Blob storage
+        // Step 3: upload to Blob storage. Public read is required: WhatsApp and
+        // Facebook fetch these URLs from Meta's servers — a private blob makes
+        // image messages silently undeliverable (accepted by the API, never sent).
         var container = blobService.GetBlobContainerClient(appOptions.Value.BlobContainerName);
-        await container.CreateIfNotExistsAsync(cancellationToken: ct);
+        await container.CreateIfNotExistsAsync(Azure.Storage.Blobs.Models.PublicAccessType.Blob, cancellationToken: ct);
         var extension = metaJson.MimeType?.Contains("png") == true ? "png" : "jpg";
         var blobName = $"{mediaId}.{extension}";
         var blobClient = container.GetBlobClient(blobName);
