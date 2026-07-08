@@ -375,11 +375,21 @@ public sealed class ProcessMessageFunction(
     private async Task ContinueIntakeAsync(Broker broker, Session session, IncomingMessage msg, string replyPhoneNumberId, CancellationToken ct)
     {
         var result = PropertyIntakeStateMachine.Advance(session.Context.BrokerIntake!, msg.Text, msg.MediaId);
+
+        if (result.Cancelled)
+        {
+            session.Context.BrokerIntake = null;
+            await sender.SendTextAsync(replyPhoneNumberId, msg.From, result.Reply ?? "❌ Alta cancelada.", ct);
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
         session.Context.BrokerIntake = result.NextState;
 
         if (!result.Done)
         {
             await sender.SendTextAsync(replyPhoneNumberId, msg.From, result.Reply ?? "", ct);
+            await db.SaveChangesAsync(ct);
             return;
         }
 

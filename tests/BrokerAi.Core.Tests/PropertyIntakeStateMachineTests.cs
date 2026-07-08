@@ -160,21 +160,21 @@ public class PropertyIntakeStateMachineTests
     }
 
     [Fact]
-    public void Video_SinVideo_CompletesIntake()
+    public void Video_SinVideo_GoesToConfirmSummary()
     {
-        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Video), "sin video", null);
+        var result = PropertyIntakeStateMachine.Advance(FilledUpToVideo(), "sin video", null);
 
-        result.Done.Should().BeTrue();
-        result.NextState.Step.Should().Be(IntakeSteps.Done);
-        result.NextState.Data.VideoUrl.Should().BeNull();
+        result.Done.Should().BeFalse("nothing saves without explicit confirmation");
+        result.NextState.Step.Should().Be(IntakeSteps.Confirm);
+        result.Reply.Should().Contain("Revisa los datos").And.Contain("confirmar");
     }
 
     [Fact]
-    public void Video_HttpLink_CompletesIntakeWithUrl()
+    public void Video_HttpLink_GoesToConfirmWithUrl()
     {
-        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Video), "https://youtu.be/xyz", null);
+        var result = PropertyIntakeStateMachine.Advance(FilledUpToVideo(), "https://youtu.be/xyz", null);
 
-        result.Done.Should().BeTrue();
+        result.NextState.Step.Should().Be(IntakeSteps.Confirm);
         result.NextState.Data.VideoUrl.Should().Be("https://youtu.be/xyz");
     }
 
@@ -188,7 +188,81 @@ public class PropertyIntakeStateMachineTests
     }
 
     [Fact]
-    public void FullConversation_EndToEnd_ReachesDone()
+    public void Confirm_Confirmar_CompletesIntake()
+    {
+        var state = new BrokerIntakeState { Step = IntakeSteps.Confirm, Data = FilledUpToVideo().Data };
+        state.Data.VideoDone = true;
+
+        var result = PropertyIntakeStateMachine.Advance(state, "confirmar", null);
+
+        result.Done.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Confirm_TargetedCorrection_FixesFieldAndReshowsSummary()
+    {
+        // The exact live scenario: broker typed 3 bathrooms, meant 1.
+        var data = FilledUpToVideo().Data;
+        data.Bathrooms = 3;
+        data.VideoDone = true;
+        var state = new BrokerIntakeState { Step = IntakeSteps.Confirm, Data = data };
+
+        var result = PropertyIntakeStateMachine.Advance(state, "baños 1", null);
+
+        result.Done.Should().BeFalse();
+        result.NextState.Step.Should().Be(IntakeSteps.Confirm);
+        result.NextState.Data.Bathrooms.Should().Be(1);
+        result.Reply.Should().Contain("Baños actualizados").And.Contain("Baños: 1");
+    }
+
+    [Theory]
+    [InlineData("precio 3000000")]
+    [InlineData("zona playa del carmen")]
+    [InlineData("recamaras 4")]
+    public void Confirm_OtherCorrections_StayOnConfirm(string correction)
+    {
+        var data = FilledUpToVideo().Data;
+        data.VideoDone = true;
+        var state = new BrokerIntakeState { Step = IntakeSteps.Confirm, Data = data };
+
+        var result = PropertyIntakeStateMachine.Advance(state, correction, null);
+
+        result.Error.Should().BeFalse(correction);
+        result.NextState.Step.Should().Be(IntakeSteps.Confirm);
+    }
+
+    [Fact]
+    public void Cancelar_AtAnyStep_AbortsIntake()
+    {
+        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Bedrooms), "cancelar", null);
+
+        result.Cancelled.Should().BeTrue();
+        result.Done.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Atras_GoesBackOneStepAndReasksQuestion()
+    {
+        var data = new IntakeData { ListingType = "venta", Type = "casa", Zone = Zones.Tulum };
+        var state = new BrokerIntakeState { Step = IntakeSteps.Price, Data = data };
+
+        var result = PropertyIntakeStateMachine.Advance(state, "atras", null);
+
+        result.NextState.Step.Should().Be(IntakeSteps.Zone);
+        result.Reply.Should().Contain("zona");
+    }
+
+    [Fact]
+    public void Atras_AtFirstStep_StaysWithMessage()
+    {
+        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.ListingTypeStep), "atrás", null);
+
+        result.NextState.Step.Should().Be(IntakeSteps.ListingTypeStep);
+        result.Error.Should().BeTrue();
+    }
+
+    [Fact]
+    public void FullConversation_EndToEnd_WithConfirmation_ReachesDone()
     {
         var state = new BrokerIntakeState();
 
@@ -200,7 +274,10 @@ public class PropertyIntakeStateMachineTests
         state = Step(state, "2");
         state = Step(state, "sin foto");
         state = Step(state, "Casa hermosa con vista al mar, alberca privada");
-        var final = PropertyIntakeStateMachine.Advance(state, "sin video", null);
+        state = Step(state, "sin video");
+        state.Step.Should().Be(IntakeSteps.Confirm, "summary screen comes before saving");
+
+        var final = PropertyIntakeStateMachine.Advance(state, "confirmar", null);
 
         final.Done.Should().BeTrue();
         final.NextState.Data.ListingType.Should().Be("venta");
@@ -213,4 +290,20 @@ public class PropertyIntakeStateMachineTests
 
     private static BrokerIntakeState Step(BrokerIntakeState state, string input) =>
         PropertyIntakeStateMachine.Advance(state, input, null).NextState;
+
+    private static BrokerIntakeState FilledUpToVideo() => new()
+    {
+        Step = IntakeSteps.Video,
+        Data = new IntakeData
+        {
+            ListingType = "venta",
+            Type = "casa",
+            Zone = Zones.Tulum,
+            Price = 2_500_000,
+            Bedrooms = 3,
+            Bathrooms = 2,
+            PhotosDone = true,
+            Description = "Casa hermosa con vista al mar",
+        },
+    };
 }

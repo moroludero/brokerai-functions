@@ -68,11 +68,19 @@ public sealed class IntakeData
     [JsonPropertyName("media_ids")]
     public List<string> MediaIds { get; set; } = [];
 
+    /// <summary>Photo step completed ("listo" / "sin foto") — MediaIds alone can't tell an intentional skip.</summary>
+    [JsonPropertyName("photos_done")]
+    public bool PhotosDone { get; set; }
+
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
     [JsonPropertyName("video_url")]
     public string? VideoUrl { get; set; }
+
+    /// <summary>Video step completed (link or "sin video") — VideoUrl null can't tell an intentional skip.</summary>
+    [JsonPropertyName("video_done")]
+    public bool VideoDone { get; set; }
 }
 
 public static class IntakeSteps
@@ -87,5 +95,6 @@ public static class IntakeSteps
     public const string Photo = "photo";
     public const string Description = "description";
     public const string Video = "video";
+    public const string Confirm = "confirm";
     public const string Done = "done";
 }
