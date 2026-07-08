@@ -24,3 +24,6 @@ Thumbs.db
 
 # Local secrets — never commit
 deploy/sql-admin-password.txt
+
+# Session context - local only
+CONTEXT.md
