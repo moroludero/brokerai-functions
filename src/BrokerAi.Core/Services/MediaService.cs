@@ -9,6 +9,13 @@ public interface IMediaService
 {
     /// <summary>Downloads a Meta media object (by media_id) and uploads it to Blob storage, returning the public/blob URL.</summary>
     Task<string> DownloadAndStoreAsync(string mediaId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads the given photo URLs, composes the grid collage (up to
+    /// <see cref="CollageBuilder.MaxPhotos"/>), uploads it as collage-{key}.jpg
+    /// and returns its URL. Null when fewer than 2 photos (no grid needed).
+    /// </summary>
+    Task<string?> RebuildCollageAsync(string key, IReadOnlyList<string> photoUrls, CancellationToken ct = default);
 }
 
 /// <summary>Handles Meta media download → Azure Blob storage for property photos.</summary>
@@ -57,6 +64,27 @@ public sealed class MediaService(
         };
         await blobClient.UploadAsync(stream, uploadOptions, ct);
 
+        return blobClient.Uri.ToString();
+    }
+
+    public async Task<string?> RebuildCollageAsync(string key, IReadOnlyList<string> photoUrls, CancellationToken ct = default)
+    {
+        if (photoUrls.Count < 2) return null;
+
+        var bytes = new List<byte[]>();
+        foreach (var url in photoUrls.Take(CollageBuilder.MaxPhotos))
+            bytes.Add(await http.GetByteArrayAsync(url, ct));
+
+        var collage = CollageBuilder.Build(bytes);
+
+        var container = blobService.GetBlobContainerClient(appOptions.Value.BlobContainerName);
+        await container.CreateIfNotExistsAsync(Azure.Storage.Blobs.Models.PublicAccessType.Blob, cancellationToken: ct);
+        var blobClient = container.GetBlobClient($"collage-{key}.jpg");
+        var uploadOptions = new Azure.Storage.Blobs.Models.BlobUploadOptions
+        {
+            HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = "image/jpeg" },
+        };
+        await blobClient.UploadAsync(new MemoryStream(collage), uploadOptions, ct);
         return blobClient.Uri.ToString();
     }
 

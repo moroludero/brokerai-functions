@@ -105,19 +105,26 @@ public sealed class ProcessMessageFunction(
                 // in ONE message (WhatsApp doesn't guarantee ordering across
                 // messages, and a separate image reliably arrives after text).
                 var card = LeadQualificationEngine.BuildQrWelcome(qrProperty, lead.Name, broker.Name);
+                // Card image: the photo grid collage (up to 6 photos in ONE image —
+                // the Cloud API can't send albums), falling back to the cover photo.
+                var cardImage = qrProperty.CollageUrl ?? qrProperty.ImageUrl;
                 // WhatsApp image captions cap at ~1024 chars — fall back to text if long.
-                if (!string.IsNullOrWhiteSpace(qrProperty.ImageUrl) && card.Length <= 1000)
-                    await sender.SendImageAsync(msg.PhoneNumberId, msg.From, qrProperty.ImageUrl, card, ct);
+                if (!string.IsNullOrWhiteSpace(cardImage) && card.Length <= 1000)
+                    await sender.SendImageAsync(msg.PhoneNumberId, msg.From, cardImage, card, ct);
                 else
                     await sender.SendTextAsync(msg.PhoneNumberId, msg.From, card, ct);
 
-                // Send up to 4 additional photos after the card (cover excluded).
-                var extraPhotos = await db.PropertyImages
-                    .Where(i => i.PropertyId == qrProperty.Id && i.Url != qrProperty.ImageUrl)
+                // The lead must see EVERY photo. With a collage, whatever didn't fit
+                // (7th onward) goes individually; without one (single photo or legacy
+                // property), everything beyond the cover goes individually.
+                var allPhotoUrls = await db.PropertyImages
+                    .Where(i => i.PropertyId == qrProperty.Id)
                     .OrderBy(i => i.SortOrder)
                     .Select(i => i.Url)
-                    .Take(4)
                     .ToListAsync(ct);
+                var extraPhotos = qrProperty.CollageUrl is not null
+                    ? allPhotoUrls.Skip(CollageBuilder.MaxPhotos)
+                    : allPhotoUrls.Where(u => u != qrProperty.ImageUrl);
                 foreach (var photoUrl in extraPhotos)
                     await sender.SendImageAsync(msg.PhoneNumberId, msg.From, photoUrl, "", ct);
 
@@ -357,6 +364,8 @@ public sealed class ProcessMessageFunction(
             if (norm.Contains("listo") || norm.Contains("cancelar") || norm.Contains("ya"))
             {
                 session.Context.PhotoAddShortCode = null;
+                var allUrls = property.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList();
+                property.CollageUrl = await media.RebuildCollageAsync(property.Id.ToString("N"), allUrls, ct);
                 var total = property.Images.Count;
                 await sender.SendTextAsync(replyPhoneNumberId, msg.From,
                     $"✅ {shortCode} ahora tiene {total} foto{(total == 1 ? "" : "s")}.", ct);
@@ -425,6 +434,9 @@ public sealed class ProcessMessageFunction(
             VideoUrl = data.VideoUrl,
             ShortCode = ShortCodeGenerator.Generate(data.Type, existingCount),
         };
+
+        // One grid image so the lead's card carries several photos in a single message.
+        property.CollageUrl = await media.RebuildCollageAsync(property.Id.ToString("N"), imageUrls, ct);
 
         db.Properties.Add(property);
         for (var i = 0; i < imageUrls.Count; i++)
