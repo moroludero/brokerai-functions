@@ -113,17 +113,24 @@ public class PropertyIntakeStateMachineTests
     {
         var state = AtStep(IntakeSteps.Photo);
 
+        // Each photo gets a silent 📸 reaction, NO text reply — forwarded
+        // batches would otherwise spam one message per image.
         var r1 = PropertyIntakeStateMachine.Advance(state, "", "media-1");
         r1.Error.Should().BeFalse();
         r1.NextState.Step.Should().Be(IntakeSteps.Photo, "photo step loops until *listo*");
         r1.NextState.Data.MediaIds.Should().ContainSingle();
+        r1.Reply.Should().BeNull("photos are acknowledged with a reaction, not text");
+        r1.ReactWithEmoji.Should().Be("📸");
 
         var r2 = PropertyIntakeStateMachine.Advance(r1.NextState, "", "media-2");
         r2.NextState.Data.MediaIds.Should().HaveCount(2);
+        r2.Reply.Should().BeNull();
 
+        // The only text arrives on *listo*, with the total count.
         var r3 = PropertyIntakeStateMachine.Advance(r2.NextState, "listo", null);
         r3.NextState.Step.Should().Be(IntakeSteps.Description);
         r3.NextState.Data.MediaIds.Should().Equal("media-1", "media-2");
+        r3.Reply.Should().Contain("2 fotos recibidas");
     }
 
     [Fact]

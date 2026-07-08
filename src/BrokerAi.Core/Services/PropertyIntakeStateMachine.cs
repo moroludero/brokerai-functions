@@ -18,7 +18,8 @@ namespace BrokerAi.Core.Services;
 /// </summary>
 public static class PropertyIntakeStateMachine
 {
-    public sealed record Result(BrokerIntakeState NextState, string? Reply, bool Done, bool Error, bool Cancelled = false);
+    /// <param name="ReactWithEmoji">When set, acknowledge the user's message with this emoji reaction instead of (or besides) a text reply — keeps forwarded photo batches from triggering N text responses.</param>
+    public sealed record Result(BrokerIntakeState NextState, string? Reply, bool Done, bool Error, bool Cancelled = false, string? ReactWithEmoji = null);
 
     private static readonly string[] ValidTypes = ["casa", "depto", "departamento", "terreno", "comercial"];
 
@@ -110,17 +111,25 @@ public static class PropertyIntakeStateMachine
                 break;
 
             case IntakeSteps.Photo:
-                // Loop: properties usually have several photos.
+                // Loop: properties usually have several photos, often forwarded as a
+                // batch (each arrives as a separate webhook — Cloud API has no album
+                // grouping). Acknowledge each with a silent 📸 reaction instead of a
+                // text reply; the only text comes on "listo" with the total count.
                 if (!string.IsNullOrEmpty(mediaId))
                 {
                     data.MediaIds.Add(mediaId);
-                    reply = $"📸 ¡Recibida! ({data.MediaIds.Count} foto{(data.MediaIds.Count == 1 ? "" : "s")}) " +
-                            "Manda otra o escribe *listo* para continuar";
-                    return Stay(state, data, step, reply);
+                    return new(new BrokerIntakeState { Step = step, Data = data }, null,
+                        Done: false, Error: false, ReactWithEmoji: "📸");
                 }
                 if (data.MediaIds.Count > 0 &&
                     (norm.Contains("listo") || norm.Contains("ya") || norm.Contains("es todo") || norm.Contains("continuar")))
-                { data.PhotosDone = true; break; }
+                {
+                    data.PhotosDone = true;
+                    var afterPhotos = NextMissingAfter(step, data);
+                    return Stay(state, data, afterPhotos,
+                        $"✅ {data.MediaIds.Count} foto{(data.MediaIds.Count == 1 ? "" : "s")} recibida{(data.MediaIds.Count == 1 ? "" : "s")} 📸\n\n" +
+                        QuestionFor(afterPhotos, data));
+                }
                 if (norm.Contains("sin foto") || norm.Contains("no foto"))
                 { data.PhotosDone = true; break; }
                 reply = data.MediaIds.Count > 0

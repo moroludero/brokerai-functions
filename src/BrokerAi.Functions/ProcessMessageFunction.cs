@@ -347,9 +347,9 @@ public sealed class ProcessMessageFunction(
             var nextOrder = property.Images.Count > 0 ? property.Images.Max(i => i.SortOrder) + 1 : 0;
             db.PropertyImages.Add(new PropertyImage { PropertyId = property.Id, Url = url, SortOrder = nextOrder });
             property.ImageUrl ??= url; // first photo ever becomes the cover
-            var total = property.Images.Count + 1;
-            await sender.SendTextAsync(replyPhoneNumberId, msg.From,
-                $"📸 ¡Agregada! ({total} foto{(total == 1 ? "" : "s")} en {shortCode}) Manda otra o escribe *listo*", ct);
+            // Silent 📸 reaction per photo — forwarded batches would otherwise
+            // trigger one text reply per image.
+            await sender.SendReactionAsync(replyPhoneNumberId, msg.From, msg.MessageId, "📸", ct);
         }
         else
         {
@@ -388,7 +388,12 @@ public sealed class ProcessMessageFunction(
 
         if (!result.Done)
         {
-            await sender.SendTextAsync(replyPhoneNumberId, msg.From, result.Reply ?? "", ct);
+            // Photos in a forwarded batch get a silent 📸 reaction each; text
+            // replies only when there's something to say.
+            if (result.ReactWithEmoji is not null)
+                await sender.SendReactionAsync(replyPhoneNumberId, msg.From, msg.MessageId, result.ReactWithEmoji, ct);
+            if (!string.IsNullOrEmpty(result.Reply))
+                await sender.SendTextAsync(replyPhoneNumberId, msg.From, result.Reply, ct);
             await db.SaveChangesAsync(ct);
             return;
         }

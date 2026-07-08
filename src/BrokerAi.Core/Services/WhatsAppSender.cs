@@ -10,6 +10,7 @@ public interface IWhatsAppSender
     Task SendTextAsync(string phoneNumberId, string to, string body, CancellationToken ct = default);
     Task SendContactCardAsync(string phoneNumberId, string to, string name, string phone, CancellationToken ct = default);
     Task SendImageAsync(string phoneNumberId, string to, string imageUrl, string caption, CancellationToken ct = default);
+    Task SendReactionAsync(string phoneNumberId, string to, string messageId, string emoji, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -64,6 +65,23 @@ public sealed class WhatsAppSender(HttpClient http, IOptions<MetaOptions> option
             to,
             type = "image",
             image,
+        };
+        await PostAsync(phoneNumberId, payload, ct);
+    }
+
+    /// <summary>
+    /// Reacts with an emoji to one of the user's messages — lightweight ack with
+    /// zero chat clutter (used to acknowledge each photo in a forwarded batch
+    /// instead of replying with N text messages).
+    /// </summary>
+    public async Task SendReactionAsync(string phoneNumberId, string to, string messageId, string emoji, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            to,
+            type = "reaction",
+            reaction = new { message_id = messageId, emoji },
         };
         await PostAsync(phoneNumberId, payload, ct);
     }
