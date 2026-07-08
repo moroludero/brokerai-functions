@@ -27,3 +27,4 @@ deploy/sql-admin-password.txt
 
 # Session context - local only
 CONTEXT.md
+deploy/pilot-broker.json
