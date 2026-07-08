@@ -39,9 +39,10 @@ public static class LeadScorer
     /// availability is always alert-worthy: the additive scale is sale-oriented
     /// (points for $1M+ budgets), so rental QR leads — implied budget = monthly
     /// rent — could mathematically never reach the hot threshold.
+    /// Dedup is NOT handled here: alerts are deduped per (lead, property) via the
+    /// LeadAlerts table, so scanning a different property re-alerts the broker.
     /// </summary>
     public static bool IsQrVisitHot(Lead lead, string? qrShortCode) =>
         qrShortCode is not null &&
-        !string.IsNullOrWhiteSpace(lead.VisitAvailability) &&
-        !lead.AlertSent;
+        !string.IsNullOrWhiteSpace(lead.VisitAvailability);
 }

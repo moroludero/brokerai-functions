@@ -131,7 +131,7 @@ public class LeadScorerTests
     }
 
     [Fact]
-    public void IsQrVisitHot_RequiresQrAndVisitAndNoDedup()
+    public void IsQrVisitHot_RequiresQrAndVisit_DedupLivesInLeadAlertsTable()
     {
         var lead = BaseLead();
         lead.VisitAvailability = "sábado 10am";
@@ -139,7 +139,9 @@ public class LeadScorerTests
         LeadScorer.IsQrVisitHot(lead, null).Should().BeFalse("no QR scan");
         LeadScorer.IsQrVisitHot(BaseLead(), "CASA-001").Should().BeFalse("no visit availability");
 
+        // AlertSent no longer suppresses: dedup is per (lead, property) via the
+        // LeadAlerts table, so scanning a DIFFERENT property re-alerts the broker.
         lead.AlertSent = true;
-        LeadScorer.IsQrVisitHot(lead, "CASA-001").Should().BeFalse("alert already sent");
+        LeadScorer.IsQrVisitHot(lead, "CASA-001").Should().BeTrue();
     }
 }

@@ -15,6 +15,7 @@ public class BrokerAiDbContext(DbContextOptions<BrokerAiDbContext> options) : Db
     public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
     public DbSet<AdCampaign> AdCampaigns => Set<AdCampaign>();
     public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
+    public DbSet<LeadAlert> LeadAlerts => Set<LeadAlert>();
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
@@ -107,6 +108,18 @@ public class BrokerAiDbContext(DbContextOptions<BrokerAiDbContext> options) : Db
             // NoAction for the same multiple-cascade-path reason as Sessions→Leads.
             e.HasOne(c => c.Property).WithMany()
                 .HasForeignKey(c => c.PropertyId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        mb.Entity<LeadAlert>(e =>
+        {
+            // One alert per (lead, property); one generic (PropertyId null) per lead —
+            // SQL Server unique indexes treat NULLs as equal, which is what we want here.
+            e.HasIndex(a => new { a.LeadId, a.PropertyId }).IsUnique();
+            e.HasOne(a => a.Lead).WithMany()
+                .HasForeignKey(a => a.LeadId).OnDelete(DeleteBehavior.Cascade);
+            // NoAction: same multiple-cascade-path restriction as Sessions/AdCampaigns.
+            e.HasOne(a => a.Property).WithMany()
+                .HasForeignKey(a => a.PropertyId).OnDelete(DeleteBehavior.NoAction);
         });
 
         mb.Entity<ProcessedMessage>(e =>

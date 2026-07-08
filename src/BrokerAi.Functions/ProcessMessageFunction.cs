@@ -105,8 +105,18 @@ public sealed class ProcessMessageFunction(
                 // in ONE message (WhatsApp doesn't guarantee ordering across
                 // messages, and a separate image reliably arrives after text).
                 var card = LeadQualificationEngine.BuildQrWelcome(qrProperty, lead.Name, broker.Name);
+
                 // Card image: the photo grid collage (up to 6 photos in ONE image —
                 // the Cloud API can't send albums), falling back to the cover photo.
+                // Legacy properties (created before collages) self-heal here: build
+                // the collage lazily on first scan.
+                var propertyPhotoUrls = await db.PropertyImages
+                    .Where(i => i.PropertyId == qrProperty.Id)
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => i.Url)
+                    .ToListAsync(ct);
+                if (qrProperty.CollageUrl is null && propertyPhotoUrls.Count >= 2)
+                    qrProperty.CollageUrl = await media.RebuildCollageAsync(qrProperty.Id.ToString("N"), propertyPhotoUrls, ct);
                 var cardImage = qrProperty.CollageUrl ?? qrProperty.ImageUrl;
                 // WhatsApp image captions cap at ~1024 chars — fall back to text if long.
                 if (!string.IsNullOrWhiteSpace(cardImage) && card.Length <= 1000)
@@ -115,16 +125,11 @@ public sealed class ProcessMessageFunction(
                     await sender.SendTextAsync(msg.PhoneNumberId, msg.From, card, ct);
 
                 // The lead must see EVERY photo. With a collage, whatever didn't fit
-                // (7th onward) goes individually; without one (single photo or legacy
-                // property), everything beyond the cover goes individually.
-                var allPhotoUrls = await db.PropertyImages
-                    .Where(i => i.PropertyId == qrProperty.Id)
-                    .OrderBy(i => i.SortOrder)
-                    .Select(i => i.Url)
-                    .ToListAsync(ct);
+                // (7th onward) goes individually; without one (single photo), anything
+                // beyond the cover goes individually.
                 var extraPhotos = qrProperty.CollageUrl is not null
-                    ? allPhotoUrls.Skip(CollageBuilder.MaxPhotos)
-                    : allPhotoUrls.Where(u => u != qrProperty.ImageUrl);
+                    ? propertyPhotoUrls.Skip(CollageBuilder.MaxPhotos)
+                    : propertyPhotoUrls.Where(u => u != qrProperty.ImageUrl);
                 foreach (var photoUrl in extraPhotos)
                     await sender.SendImageAsync(msg.PhoneNumberId, msg.From, photoUrl, "", ct);
 
@@ -189,19 +194,29 @@ public sealed class ProcessMessageFunction(
             var scoreResult = LeadScorer.Score(lead);
             lead.Score = scoreResult.Score;
 
+            // The QR property may have been scanned in an earlier message —
+            // resolve it from the session so the alert always references it.
+            if (qrProperty is null && session.Context.QrShortCode is not null)
+                qrProperty = await db.Properties.FirstOrDefaultAsync(p => p.ShortCode == session.Context.QrShortCode, ct);
+
             // QR + scheduled visit always alerts — the point scale is sale-oriented
             // and would never mark a rental QR lead hot (rent price ≠ $1M budget).
-            var isHot = scoreResult.IsHot || LeadScorer.IsQrVisitHot(lead, session.Context.QrShortCode);
+            var alertWorthy = scoreResult.Score >= LeadScorer.HotThreshold ||
+                              LeadScorer.IsQrVisitHot(lead, session.Context.QrShortCode);
+
+            // Industry-standard dedup: one alert per (lead, property) — the same
+            // person scanning a DIFFERENT property re-alerts the broker; the same
+            // property never re-spams. Generic (non-QR) alerts dedup once per lead.
+            var alreadyAlerted = await db.LeadAlerts.AnyAsync(a =>
+                a.LeadId == lead.Id && a.PropertyId == (qrProperty != null ? qrProperty.Id : null), ct);
+
+            var isHot = alertWorthy && !alreadyAlerted;
 
             if (isHot)
             {
                 lead.AlertSent = true;
                 lead.Status = LeadStatus.Hot;
-
-                // The QR property may have been scanned in an earlier message —
-                // resolve it from the session so the alert always references it.
-                if (qrProperty is null && session.Context.QrShortCode is not null)
-                    qrProperty = await db.Properties.FirstOrDefaultAsync(p => p.ShortCode == session.Context.QrShortCode, ct);
+                db.LeadAlerts.Add(new LeadAlert { LeadId = lead.Id, PropertyId = qrProperty?.Id });
 
                 var leadProfile =
                     $"- Name: {lead.Name}\n- Budget: ${lead.BudgetMin}-${lead.BudgetMax} MXN\n" +
