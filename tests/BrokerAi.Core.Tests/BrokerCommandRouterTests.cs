@@ -84,4 +84,22 @@ public class BrokerCommandRouterTests
         Detect(null).Command.Should().Be(Command.Advisor);
         Detect("").Command.Should().Be(Command.Advisor);
     }
+
+    [Theory]
+    [InlineData("fotos CASA-001")]
+    [InlineData("foto casa-001")]
+    [InlineData("agregar fotos CASA-001")]
+    public void Detect_Fotos_ExtractsShortCode(string input)
+    {
+        var d = Detect(input);
+
+        d.Command.Should().Be(Command.Fotos);
+        d.ShortCode.Should().Be("CASA-001");
+    }
+
+    [Fact]
+    public void Detect_AgregarAlone_StillStartsIntake_NotFotos()
+    {
+        Detect("agregar").Command.Should().Be(Command.Agregar);
+    }
 }

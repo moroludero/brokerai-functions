@@ -111,6 +111,16 @@ public sealed class ProcessMessageFunction(
                 else
                     await sender.SendTextAsync(msg.PhoneNumberId, msg.From, card, ct);
 
+                // Send up to 4 additional photos after the card (cover excluded).
+                var extraPhotos = await db.PropertyImages
+                    .Where(i => i.PropertyId == qrProperty.Id && i.Url != qrProperty.ImageUrl)
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => i.Url)
+                    .Take(4)
+                    .ToListAsync(ct);
+                foreach (var photoUrl in extraPhotos)
+                    await sender.SendImageAsync(msg.PhoneNumberId, msg.From, photoUrl, "", ct);
+
                 session.Context.History.Add(new TurnRecord { Role = "assistant", Content = card });
                 session.Step = LeadSteps.VisitAvailability;
                 lead.Status = LeadStatus.Qualifying;
@@ -181,16 +191,23 @@ public sealed class ProcessMessageFunction(
                 lead.AlertSent = true;
                 lead.Status = LeadStatus.Hot;
 
+                // The QR property may have been scanned in an earlier message —
+                // resolve it from the session so the alert always references it.
+                if (qrProperty is null && session.Context.QrShortCode is not null)
+                    qrProperty = await db.Properties.FirstOrDefaultAsync(p => p.ShortCode == session.Context.QrShortCode, ct);
+
                 var leadProfile =
                     $"- Name: {lead.Name}\n- Budget: ${lead.BudgetMin}-${lead.BudgetMax} MXN\n" +
                     $"- Zone: {lead.Zone}\n- Type: {lead.PropertyType}\n- Visit: {lead.VisitAvailability}\n" +
                     $"- QR property: {qrProperty?.Title ?? "none"}";
                 var summary = AlertBuilder.ConversationSummary(session.Context);
-                var coaching = await claude.SellingArgumentsAsync(leadProfile, summary, ct);
-                var alertMessage = AlertBuilder.Build(lead, coaching, session.Context.QrShortCode, qrProperty?.Title);
+                var pack = await claude.HotLeadPackAsync(leadProfile, summary, broker.Name, ct);
+                var alertMessage = AlertBuilder.Build(lead, pack.Coaching, pack.Opener, broker.Name,
+                    session.Context.QrShortCode, qrProperty?.Title);
 
                 await sender.SendTextAsync(broker.PhoneNumberId ?? msg.PhoneNumberId, broker.AlertNumber, alertMessage, ct);
-                await sender.SendContactCardAsync(broker.PhoneNumberId ?? msg.PhoneNumberId, broker.AlertNumber, lead.Name ?? "Lead", lead.Phone, ct);
+                await sender.SendContactCardAsync(broker.PhoneNumberId ?? msg.PhoneNumberId, broker.AlertNumber,
+                    lead.Name ?? "Lead", PhoneNumbers.ToDialableMx(lead.Phone), ct);
             }
 
             var closing = "¡Gracias! Un asesor te contactará pronto para coordinar tu visita. 🏠";
@@ -217,6 +234,13 @@ public sealed class ProcessMessageFunction(
         var session = await GetOrCreateSessionAsync(broker.Id, msg.From, SessionType.Broker, ct);
         var replyPhoneNumberId = broker.PhoneNumberId ?? msg.PhoneNumberId;
 
+        // Active photo-add mode ("fotos CASA-001") takes top priority.
+        if (session.Context.PhotoAddShortCode is not null)
+        {
+            await ContinuePhotoAddAsync(broker, session, msg, replyPhoneNumberId, ct);
+            return;
+        }
+
         // Active property intake takes priority over command parsing.
         if (session.Context.BrokerIntake is not null)
         {
@@ -230,6 +254,26 @@ public sealed class ProcessMessageFunction(
         {
             case BrokerCommandRouter.Command.Ayuda:
                 await sender.SendTextAsync(replyPhoneNumberId, msg.From, BrokerCommandRouter.HelpMessage, ct);
+                break;
+
+            case BrokerCommandRouter.Command.Fotos:
+                if (detection.ShortCode is null)
+                {
+                    await sender.SendTextAsync(replyPhoneNumberId, msg.From,
+                        "¿A qué propiedad? Ejemplo: *fotos CASA-001*", ct);
+                    break;
+                }
+                var photoProperty = await db.Properties.FirstOrDefaultAsync(
+                    p => p.BrokerId == broker.Id && p.ShortCode == detection.ShortCode, ct);
+                if (photoProperty is null)
+                {
+                    await sender.SendTextAsync(replyPhoneNumberId, msg.From,
+                        $"No encontré la propiedad {detection.ShortCode}.", ct);
+                    break;
+                }
+                session.Context.PhotoAddShortCode = detection.ShortCode;
+                await sender.SendTextAsync(replyPhoneNumberId, msg.From,
+                    $"📸 Mándame las fotos para *{detection.ShortCode}* (una por una). Escribe *listo* cuando termines.", ct);
                 break;
 
             case BrokerCommandRouter.Command.Agregar:
@@ -283,6 +327,51 @@ public sealed class ProcessMessageFunction(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>"fotos CASA-001" mode: each image appends to the property; "listo" exits.</summary>
+    private async Task ContinuePhotoAddAsync(Broker broker, Session session, IncomingMessage msg, string replyPhoneNumberId, CancellationToken ct)
+    {
+        var shortCode = session.Context.PhotoAddShortCode!;
+        var property = await db.Properties.Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.BrokerId == broker.Id && p.ShortCode == shortCode, ct);
+        if (property is null)
+        {
+            session.Context.PhotoAddShortCode = null;
+            await sender.SendTextAsync(replyPhoneNumberId, msg.From, $"No encontré la propiedad {shortCode}.", ct);
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(msg.MediaId))
+        {
+            var url = await media.DownloadAndStoreAsync(msg.MediaId, ct);
+            var nextOrder = property.Images.Count > 0 ? property.Images.Max(i => i.SortOrder) + 1 : 0;
+            db.PropertyImages.Add(new PropertyImage { PropertyId = property.Id, Url = url, SortOrder = nextOrder });
+            property.ImageUrl ??= url; // first photo ever becomes the cover
+            var total = property.Images.Count + 1;
+            await sender.SendTextAsync(replyPhoneNumberId, msg.From,
+                $"📸 ¡Agregada! ({total} foto{(total == 1 ? "" : "s")} en {shortCode}) Manda otra o escribe *listo*", ct);
+        }
+        else
+        {
+            var norm = TextNormalizer.Normalize(msg.Text ?? "");
+            if (norm.Contains("listo") || norm.Contains("cancelar") || norm.Contains("ya"))
+            {
+                session.Context.PhotoAddShortCode = null;
+                var total = property.Images.Count;
+                await sender.SendTextAsync(replyPhoneNumberId, msg.From,
+                    $"✅ {shortCode} ahora tiene {total} foto{(total == 1 ? "" : "s")}.", ct);
+            }
+            else
+            {
+                await sender.SendTextAsync(replyPhoneNumberId, msg.From,
+                    $"Manda una foto para {shortCode} o escribe *listo* para terminar.", ct);
+            }
+        }
+
+        session.LastMessageAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
     private async Task ContinueIntakeAsync(Broker broker, Session session, IncomingMessage msg, string replyPhoneNumberId, CancellationToken ct)
     {
         var result = PropertyIntakeStateMachine.Advance(session.Context.BrokerIntake!, msg.Text, msg.MediaId);
@@ -295,9 +384,11 @@ public sealed class ProcessMessageFunction(
         }
 
         var data = result.NextState.Data;
-        string? imageUrl = null;
-        if (!string.IsNullOrEmpty(data.MediaId))
-            imageUrl = await media.DownloadAndStoreAsync(data.MediaId, ct);
+        // Upload every photo collected during intake; the first becomes the cover.
+        var imageUrls = new List<string>();
+        foreach (var mediaId in data.MediaIds)
+            imageUrls.Add(await media.DownloadAndStoreAsync(mediaId, ct));
+        var imageUrl = imageUrls.FirstOrDefault();
 
         var kind = ParsePropertyKind(data.Type);
         var listingKind = ParseListingType(data.ListingType);
@@ -321,6 +412,8 @@ public sealed class ProcessMessageFunction(
         };
 
         db.Properties.Add(property);
+        for (var i = 0; i < imageUrls.Count; i++)
+            db.PropertyImages.Add(new PropertyImage { PropertyId = property.Id, Url = imageUrls[i], SortOrder = i });
         await SaveWithUniqueRetryAsync(
             () => property.ShortCode = ShortCodeGenerator.Generate(data.Type, ++existingCount),
             ct);

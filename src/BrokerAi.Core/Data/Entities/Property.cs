@@ -22,8 +22,13 @@ public class Property
     public int? Bedrooms { get; set; }
     public int? Bathrooms { get; set; }
     public string? Description { get; set; }
+
+    /// <summary>Cover photo (= first image). All photos live in <see cref="Images"/>.</summary>
     public string? ImageUrl { get; set; }
+
     public string? VideoUrl { get; set; }
+
+    public List<PropertyImage> Images { get; set; } = [];
 
     /// <summary>e.g. "CASA-001" — printed on the cartel QR.</summary>
     public string? ShortCode { get; set; }

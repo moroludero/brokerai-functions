@@ -109,21 +109,38 @@ public class PropertyIntakeStateMachineTests
     }
 
     [Fact]
-    public void Photo_WithMediaId_AdvancesToDescription()
+    public void Photo_MultiplePhotosThenListo_CollectsAllAndAdvances()
     {
-        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Photo), "", "media-abc");
+        var state = AtStep(IntakeSteps.Photo);
 
-        result.NextState.Step.Should().Be(IntakeSteps.Description);
-        result.NextState.Data.MediaId.Should().Be("media-abc");
+        var r1 = PropertyIntakeStateMachine.Advance(state, "", "media-1");
+        r1.Error.Should().BeFalse();
+        r1.NextState.Step.Should().Be(IntakeSteps.Photo, "photo step loops until *listo*");
+        r1.NextState.Data.MediaIds.Should().ContainSingle();
+
+        var r2 = PropertyIntakeStateMachine.Advance(r1.NextState, "", "media-2");
+        r2.NextState.Data.MediaIds.Should().HaveCount(2);
+
+        var r3 = PropertyIntakeStateMachine.Advance(r2.NextState, "listo", null);
+        r3.NextState.Step.Should().Be(IntakeSteps.Description);
+        r3.NextState.Data.MediaIds.Should().Equal("media-1", "media-2");
     }
 
     [Fact]
-    public void Photo_SinFoto_AdvancesToDescriptionWithNullImage()
+    public void Photo_ListoWithoutAnyPhoto_Rejected()
+    {
+        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Photo), "listo", null);
+
+        result.Error.Should().BeTrue("can't finish the photo step with zero photos unless saying *sin foto*");
+    }
+
+    [Fact]
+    public void Photo_SinFoto_AdvancesToDescriptionWithNoImages()
     {
         var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Photo), "sin foto", null);
 
         result.NextState.Step.Should().Be(IntakeSteps.Description);
-        result.NextState.Data.ImageUrl.Should().BeNull();
+        result.NextState.Data.MediaIds.Should().BeEmpty();
     }
 
     [Fact]

@@ -20,6 +20,7 @@ public static partial class BrokerCommandRouter
         Publicar,       // organic Facebook post
         Publicidad,     // paid Facebook ad
         Resumen,        // alias: mis leads
+        Fotos,          // add photos to an existing property
     }
 
     public sealed record Detection(Command Command, string? ShortCode, int? BudgetMxn, int DurationDays);
@@ -30,6 +31,10 @@ public static partial class BrokerCommandRouter
 
         if (Regex.IsMatch(norm, @"^(ayuda|menu|opciones|comandos|help)$"))
             return new(Command.Ayuda, null, null, 7);
+
+        // Before Agregar: "agregar fotos CASA-001" must not fall into property intake.
+        if (Regex.IsMatch(norm, @"^(agregar\s+)?fotos?\s+\S"))
+            return new(Command.Fotos, QrDetector.Detect(norm), null, 7);
 
         if (norm.StartsWith("agregar") || Regex.IsMatch(norm, @"^nueva\s*propiedad"))
             return new(Command.Agregar, null, null, 7);
@@ -76,6 +81,7 @@ public static partial class BrokerCommandRouter
         🤖 *Comandos disponibles:*
 
         🏠 *agregar* — agregar una propiedad
+        📸 *fotos [código]* — agregar fotos a una propiedad, ej: fotos CASA-001
         📋 *listar* — ver tus propiedades activas
         📊 *resumen* — ver resumen de leads de hoy
         🔇 *pausar [código]* — ej: pausar CASA-001

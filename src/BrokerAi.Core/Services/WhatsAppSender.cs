@@ -54,12 +54,16 @@ public sealed class WhatsAppSender(HttpClient http, IOptions<MetaOptions> option
 
     public async Task SendImageAsync(string phoneNumberId, string to, string imageUrl, string caption, CancellationToken ct = default)
     {
+        // Meta rejects empty caption strings — omit the field entirely when blank.
+        object image = string.IsNullOrWhiteSpace(caption)
+            ? new { link = imageUrl }
+            : new { link = imageUrl, caption };
         var payload = new
         {
             messaging_product = "whatsapp",
             to,
             type = "image",
-            image = new { link = imageUrl, caption },
+            image,
         };
         await PostAsync(phoneNumberId, payload, ct);
     }

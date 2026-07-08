@@ -14,6 +14,10 @@ public sealed class SessionContext
     [JsonPropertyName("qr_short_code")]
     public string? QrShortCode { get; set; }
 
+    /// <summary>Broker session: short code of the property currently receiving extra photos ("fotos CASA-001" mode).</summary>
+    [JsonPropertyName("photo_add_short_code")]
+    public string? PhotoAddShortCode { get; set; }
+
     [JsonPropertyName("last_message_id")]
     public string? LastMessageId { get; set; }
 }
@@ -60,11 +64,9 @@ public sealed class IntakeData
     [JsonPropertyName("bathrooms")]
     public int? Bathrooms { get; set; }
 
-    [JsonPropertyName("media_id")]
-    public string? MediaId { get; set; }
-
-    [JsonPropertyName("image_url")]
-    public string? ImageUrl { get; set; }
+    /// <summary>Meta media ids of every photo sent during intake (uploaded to Blob on completion).</summary>
+    [JsonPropertyName("media_ids")]
+    public List<string> MediaIds { get; set; } = [];
 
     [JsonPropertyName("description")]
     public string? Description { get; set; }

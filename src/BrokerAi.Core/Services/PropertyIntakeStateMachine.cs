@@ -168,26 +168,36 @@ public static class PropertyIntakeStateMachine
                 {
                     data.Bathrooms = bathrooms;
                     nextStep = IntakeSteps.Photo;
-                    reply = "Mándame una foto de la propiedad, o escribe *sin foto* para continuar 📸";
+                    reply = "Mándame las fotos de la propiedad (las que quieras, una por una). " +
+                            "Cuando termines escribe *listo*, o *sin foto* para continuar 📸";
                 }
                 break;
 
             case IntakeSteps.Photo:
+                // Loop: properties usually have several photos. Each image message
+                // adds one; "listo" moves on; "sin foto" skips photos entirely.
                 if (!string.IsNullOrEmpty(mediaId))
                 {
-                    data.MediaId = mediaId; // uploaded to Blob later → image_url
+                    data.MediaIds.Add(mediaId); // uploaded to Blob on completion
+                    reply = $"📸 ¡Recibida! ({data.MediaIds.Count} foto{(data.MediaIds.Count == 1 ? "" : "s")}) " +
+                            "Manda otra o escribe *listo* para continuar";
+                }
+                else if (data.MediaIds.Count > 0 &&
+                         (norm.Contains("listo") || norm.Contains("ya") || norm.Contains("es todo") || norm.Contains("continuar")))
+                {
                     nextStep = IntakeSteps.Description;
                     reply = "Perfecto 👍 Ahora escribe una descripción corta (2–3 líneas, lo que más destaca):";
                 }
                 else if (norm.Contains("sin foto") || norm.Contains("no foto"))
                 {
-                    data.ImageUrl = null;
                     nextStep = IntakeSteps.Description;
                     reply = "Ok, sin foto. Escribe una descripción corta de la propiedad:";
                 }
                 else
                 {
-                    reply = "Mándame una foto o escribe *sin foto*";
+                    reply = data.MediaIds.Count > 0
+                        ? "Manda otra foto o escribe *listo* para continuar"
+                        : "Mándame una foto, o escribe *sin foto* para continuar";
                     error = true;
                 }
                 break;

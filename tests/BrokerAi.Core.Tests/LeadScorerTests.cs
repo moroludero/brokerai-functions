@@ -121,6 +121,15 @@ public class LeadScorerTests
         LeadScorer.IsQrVisitHot(lead, "CASA-001").Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("5212223000584", "522223000584")] // WhatsApp legacy '1' stripped
+    [InlineData("522223000584", "522223000584")]  // already dialable
+    [InlineData("19542182773", "19542182773")]    // non-Mexican untouched
+    public void ToDialableMx_NormalizesMexicanNumbers(string input, string expected)
+    {
+        PhoneNumbers.ToDialableMx(input).Should().Be(expected);
+    }
+
     [Fact]
     public void IsQrVisitHot_RequiresQrAndVisitAndNoDedup()
     {

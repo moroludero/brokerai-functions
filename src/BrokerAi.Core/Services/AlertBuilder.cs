@@ -19,7 +19,21 @@ public static class AlertBuilder
         return lines.Count > 0 ? string.Join('\n', lines) : "(sin historial disponible)";
     }
 
-    public static string Build(Lead lead, string coaching, string? qrShortCode = null, string? qrPropertyTitle = null)
+    /// <summary>
+    /// Default lead opener when the AI one is unavailable — warm, personalized
+    /// with whatever we know, single confirm-the-visit question.
+    /// </summary>
+    public static string FallbackOpener(Lead lead, string brokerName, string? qrPropertyTitle)
+    {
+        var hola = string.IsNullOrWhiteSpace(lead.Name) ? "¡Hola!" : $"¡Hola, {lead.Name.Trim().Split(' ')[0]}!";
+        var propRef = qrPropertyTitle is not null ? $" sobre {qrPropertyTitle}" : " sobre la propiedad que te interesó";
+        var visitRef = !string.IsNullOrWhiteSpace(lead.VisitAvailability)
+            ? $" ¿Te confirmo la visita para {lead.VisitAvailability}?"
+            : " ¿Qué día te gustaría visitarla?";
+        return $"{hola} Soy {brokerName}, me escribiste{propRef}. Con gusto te atiendo 😊{visitRef}";
+    }
+
+    public static string Build(Lead lead, string coaching, string? openerForLead = null, string brokerName = "", string? qrShortCode = null, string? qrPropertyTitle = null)
     {
         var budget = lead.BudgetMin.HasValue && lead.BudgetMax.HasValue
             ? $"${lead.BudgetMin.Value.ToString("N0", Mx)}–${lead.BudgetMax.Value.ToString("N0", Mx)} MXN"
@@ -37,17 +51,27 @@ public static class AlertBuilder
             ? "• Seguimiento personalizado recomendado"
             : coaching.Trim();
 
+        // Dialable number: strip the legacy Mexican '1' WhatsApp adds (521... → 52...)
+        var phone = PhoneNumbers.ToDialableMx(lead.Phone);
+
+        // Deep link that opens the lead's chat with a personalized, ready-to-send
+        // message the broker can review, edit, or replace before sending.
+        var opener = string.IsNullOrWhiteSpace(openerForLead)
+            ? FallbackOpener(lead, brokerName, qrPropertyTitle)
+            : openerForLead;
+        var openerLink = $"https://wa.me/{phone}?text={Uri.EscapeDataString(opener)}";
+
         return
             $"""
             🔥 *Nuevo lead calificado*
 
             👤 {lead.Name ?? "Sin nombre"}
-            📱 {lead.Phone}
+            📱 {phone}
             💰 {budget}
             📍 {lead.Zone ?? "?"} · {lead.PropertyType ?? "?"}{visitLine}{qrLine}
 
-            ¡Llámalos para confirmar la visita!
-            👉 https://wa.me/{lead.Phone}
+            ✍️ *Toca para escribirle — el mensaje ya va listo (revísalo y envía):*
+            👉 {openerLink}
 
             🧠 *Recomendación basada en su conversación:*
             {coachingText}

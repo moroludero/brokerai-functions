@@ -14,8 +14,14 @@ public interface IClaudeGateway
 {
     Task<LeadExtraction> ClassifyAsync(string message, CancellationToken ct = default);
     Task<string> AdviseAsync(string brokerDataContext, string brokerMessage, CancellationToken ct = default);
-    Task<string> SellingArgumentsAsync(string leadProfile, string conversationSummary, CancellationToken ct = default);
+    Task<HotLeadPack> HotLeadPackAsync(string leadProfile, string conversationSummary, string brokerName, CancellationToken ct = default);
 }
+
+/// <summary>
+/// AI output for a hot-lead alert: private coaching for the broker plus a
+/// ready-to-send personalized opener the broker forwards to the lead.
+/// </summary>
+public sealed record HotLeadPack(string Coaching, string? Opener);
 
 /// <summary>
 /// Wraps the official Anthropic SDK. Static prompt text lives in a cached system
@@ -54,10 +60,27 @@ public sealed class ClaudeService(IOptions<AnthropicOptions> options, ILogger<Cl
     public Task<string> AdviseAsync(string brokerDataContext, string brokerMessage, CancellationToken ct = default) =>
         CreateAsync(AdvisorPrompt, $"{brokerDataContext}\n\nBroker's message: \"{brokerMessage}\"", maxTokens: 500, ct);
 
-    public Task<string> SellingArgumentsAsync(string leadProfile, string conversationSummary, CancellationToken ct = default) =>
-        CreateAsync(SellingArgumentsPrompt,
-            $"Lead profile:\n{leadProfile}\n\nWhat the lead said during the conversation:\n{conversationSummary}",
-            maxTokens: 500, ct);
+    public async Task<HotLeadPack> HotLeadPackAsync(string leadProfile, string conversationSummary, string brokerName, CancellationToken ct = default)
+    {
+        var text = await CreateAsync(SellingArgumentsPrompt,
+            $"Broker's name: {brokerName}\n\nLead profile:\n{leadProfile}\n\n" +
+            $"What the lead said during the conversation:\n{conversationSummary}",
+            maxTokens: 600, ct);
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<HotLeadPackJson>(ExtractJson(text), JsonOpts);
+            if (parsed is not null && !string.IsNullOrWhiteSpace(parsed.Coaching))
+                return new HotLeadPack(parsed.Coaching.Trim(), string.IsNullOrWhiteSpace(parsed.Opener) ? null : parsed.Opener.Trim());
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Hot-lead pack returned unparseable JSON: {Text}", text);
+        }
+        // Fail open: use the raw text as coaching; caller falls back to a template opener.
+        return new HotLeadPack(text, null);
+    }
+
+    private sealed record HotLeadPackJson(string? Coaching, string? Opener);
 
     private async Task<string> CreateAsync(string systemPrompt, string userContent, int maxTokens, CancellationToken ct)
     {

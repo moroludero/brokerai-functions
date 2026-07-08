@@ -12,6 +12,7 @@ public class BrokerAiDbContext(DbContextOptions<BrokerAiDbContext> options) : Db
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<Property> Properties => Set<Property>();
+    public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
     public DbSet<AdCampaign> AdCampaigns => Set<AdCampaign>();
     public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
 
@@ -87,6 +88,14 @@ public class BrokerAiDbContext(DbContextOptions<BrokerAiDbContext> options) : Db
             e.HasIndex(p => new { p.BrokerId, p.Active });
             e.HasOne(p => p.Broker).WithMany(b => b.Properties)
                 .HasForeignKey(p => p.BrokerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        mb.Entity<PropertyImage>(e =>
+        {
+            e.Property(i => i.Url).HasMaxLength(1024);
+            e.HasIndex(i => new { i.PropertyId, i.SortOrder });
+            e.HasOne(i => i.Property).WithMany(p => p.Images)
+                .HasForeignKey(i => i.PropertyId).OnDelete(DeleteBehavior.Cascade);
         });
 
         mb.Entity<AdCampaign>(e =>
