@@ -33,6 +33,12 @@ public class Property
 
     public List<PropertyImage> Images { get; set; } = [];
 
+    // Exact location, captured via WhatsApp's native location share during intake.
+    // The pin is sent to the lead when they confirm a visit.
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public string? Address { get; set; }
+
     /// <summary>e.g. "CASA-001" — printed on the cartel QR.</summary>
     public string? ShortCode { get; set; }
 

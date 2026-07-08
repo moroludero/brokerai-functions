@@ -12,7 +12,7 @@
 .EXAMPLE
     .\deploy\reset-test-data.ps1                # full wipe + re-seed pilot broker
     .\deploy\reset-test-data.ps1 -SkipReseed    # full wipe, leave DB empty
-    .\deploy\reset-test-data.ps1 -ClearPhotos   # also delete uploaded photos from Blob storage
+    .\deploy\reset-test-data.ps1 -ClearPhotos   # also delete uploaded photos from Blob storage run in powershell
 
 .NOTES
     ⚠️ Destructive by design — intended for the TEST/pilot environment only.

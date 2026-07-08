@@ -151,6 +151,23 @@ public class WebhookParserTests
     }
 
     [Fact]
+    public void Parse_LocationMessage_ExtractsCoordinates()
+    {
+        var body = EnvelopeWithMessage("""
+            { "from": "529981234567", "id": "wamid.loc", "type": "location", "timestamp": "1700000000",
+              "location": { "latitude": 21.161, "longitude": -86.851, "name": "Residencial X", "address": "Av. Kabah 123" } }
+            """);
+
+        var result = WebhookParser.Parse(body);
+
+        result.Skip.Should().BeFalse("location messages are now first-class input");
+        result.Message!.Latitude.Should().Be(21.161);
+        result.Message.Longitude.Should().Be(-86.851);
+        result.Message.LocationName.Should().Be("Residencial X");
+        result.Message.LocationAddress.Should().Be("Av. Kabah 123");
+    }
+
+    [Fact]
     public void Parse_NoContacts_ProfileNameIsNull()
     {
         var body = EnvelopeWithMessage("""

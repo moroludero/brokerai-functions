@@ -249,8 +249,16 @@ public sealed class ProcessMessageFunction(
             session.Context.History.Add(new TurnRecord { Role = "assistant", Content = closing });
             await sender.SendTextAsync(msg.PhoneNumberId, msg.From, closing, ct);
             if (isHot)
+            {
                 await sender.SendContactCardAsync(msg.PhoneNumberId, msg.From,
                     broker.Name, PhoneNumbers.ToDialableMx(broker.AlertNumber), ct);
+                // Visit confirmed → send the property's exact location pin so the
+                // lead knows where to go.
+                if (qrProperty is { Latitude: not null, Longitude: not null })
+                    await sender.SendLocationAsync(msg.PhoneNumberId, msg.From,
+                        qrProperty.Latitude.Value, qrProperty.Longitude.Value,
+                        qrProperty.Title, qrProperty.Address ?? qrProperty.Zone, ct);
+            }
         }
         else
         {
@@ -414,7 +422,10 @@ public sealed class ProcessMessageFunction(
 
     private async Task ContinueIntakeAsync(Broker broker, Session session, IncomingMessage msg, string replyPhoneNumberId, CancellationToken ct)
     {
-        var result = PropertyIntakeStateMachine.Advance(session.Context.BrokerIntake!, msg.Text, msg.MediaId);
+        var locationShare = msg.Latitude.HasValue && msg.Longitude.HasValue
+            ? new PropertyIntakeStateMachine.LocationShare(msg.Latitude.Value, msg.Longitude.Value, msg.LocationName, msg.LocationAddress)
+            : null;
+        var result = PropertyIntakeStateMachine.Advance(session.Context.BrokerIntake!, msg.Text, msg.MediaId, locationShare);
 
         if (result.Cancelled)
         {
@@ -433,7 +444,14 @@ public sealed class ProcessMessageFunction(
             if (result.ReactWithEmoji is not null)
                 await sender.SendReactionAsync(replyPhoneNumberId, msg.From, msg.MessageId, result.ReactWithEmoji, ct);
             if (!string.IsNullOrEmpty(result.Reply))
-                await sender.SendTextAsync(replyPhoneNumberId, msg.From, result.Reply, ct);
+            {
+                // The location question ships as an interactive message with the
+                // native "send location" button instead of plain text.
+                if (result.NextState.Step == IntakeSteps.Location)
+                    await sender.SendLocationRequestAsync(replyPhoneNumberId, msg.From, result.Reply, ct);
+                else
+                    await sender.SendTextAsync(replyPhoneNumberId, msg.From, result.Reply, ct);
+            }
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -463,6 +481,9 @@ public sealed class ProcessMessageFunction(
             Description = data.Description,
             ImageUrl = imageUrl,
             VideoUrl = data.VideoUrl,
+            Latitude = data.Latitude,
+            Longitude = data.Longitude,
+            Address = data.Address,
             ShortCode = ShortCodeGenerator.Generate(data.Type, existingCount),
         };
 

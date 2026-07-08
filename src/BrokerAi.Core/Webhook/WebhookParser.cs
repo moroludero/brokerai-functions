@@ -86,6 +86,17 @@ public static class WebhookParser
                     msg.IsVoice = true;
                     return ParseResult.Ok(msg);
 
+                case "location":
+                    if (!message.TryGetProperty("location", out var loc) ||
+                        !loc.TryGetProperty("latitude", out var lat) ||
+                        !loc.TryGetProperty("longitude", out var lng))
+                        return ParseResult.Skipped("location_without_coordinates");
+                    msg.Latitude = lat.GetDouble();
+                    msg.Longitude = lng.GetDouble();
+                    msg.LocationName = GetString(loc, "name");
+                    msg.LocationAddress = GetString(loc, "address");
+                    return ParseResult.Ok(msg);
+
                 default:
                     // Stickers, docs, location etc. — ignore
                     return ParseResult.Skipped($"unsupported_type:{messageType}");

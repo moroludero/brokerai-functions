@@ -11,6 +11,8 @@ public interface IWhatsAppSender
     Task SendContactCardAsync(string phoneNumberId, string to, string name, string phone, CancellationToken ct = default);
     Task SendImageAsync(string phoneNumberId, string to, string imageUrl, string caption, CancellationToken ct = default);
     Task SendReactionAsync(string phoneNumberId, string to, string messageId, string emoji, CancellationToken ct = default);
+    Task SendLocationRequestAsync(string phoneNumberId, string to, string bodyText, CancellationToken ct = default);
+    Task SendLocationAsync(string phoneNumberId, string to, double latitude, double longitude, string? name, string? address, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -82,6 +84,46 @@ public sealed class WhatsAppSender(HttpClient http, IOptions<MetaOptions> option
             to,
             type = "reaction",
             reaction = new { message_id = messageId, emoji },
+        };
+        await PostAsync(phoneNumberId, payload, ct);
+    }
+
+    /// <summary>
+    /// Interactive location request: shows a native "Enviar ubicación" button that
+    /// opens WhatsApp's location-share screen — the official way to ask for a location.
+    /// </summary>
+    public async Task SendLocationRequestAsync(string phoneNumberId, string to, string bodyText, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            to,
+            type = "interactive",
+            interactive = new
+            {
+                type = "location_request_message",
+                body = new { text = bodyText },
+                action = new { name = "send_location" },
+            },
+        };
+        await PostAsync(phoneNumberId, payload, ct);
+    }
+
+    /// <summary>Sends a location pin (e.g. the property's exact spot when a visit is confirmed).</summary>
+    public async Task SendLocationAsync(string phoneNumberId, string to, double latitude, double longitude, string? name, string? address, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            to,
+            type = "location",
+            location = new
+            {
+                latitude,
+                longitude,
+                name,
+                address,
+            },
         };
         await PostAsync(phoneNumberId, payload, ct);
     }

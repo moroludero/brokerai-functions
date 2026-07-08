@@ -72,6 +72,20 @@ public sealed class IntakeData
     [JsonPropertyName("photos_done")]
     public bool PhotosDone { get; set; }
 
+    // Property location (native WhatsApp location share, or a typed address)
+    [JsonPropertyName("latitude")]
+    public double? Latitude { get; set; }
+
+    [JsonPropertyName("longitude")]
+    public double? Longitude { get; set; }
+
+    [JsonPropertyName("address")]
+    public string? Address { get; set; }
+
+    /// <summary>Location step completed (pin shared, address typed, or "sin ubicación").</summary>
+    [JsonPropertyName("location_done")]
+    public bool LocationDone { get; set; }
+
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
@@ -88,6 +102,7 @@ public static class IntakeSteps
     public const string ListingTypeStep = "listing_type";
     public const string Type = "type";
     public const string Zone = "zone";
+    public const string Location = "location";
     public const string Price = "price";
     public const string RentPrice = "rent_price";
     public const string Bedrooms = "bedrooms";

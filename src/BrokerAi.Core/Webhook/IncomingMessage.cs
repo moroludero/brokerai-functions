@@ -32,4 +32,17 @@ public sealed class IncomingMessage
     /// <summary>WhatsApp profile display name from contacts[].profile.name — free lead-name capture.</summary>
     [JsonPropertyName("profile_name")]
     public string? ProfileName { get; set; }
+
+    // Location messages (native WhatsApp location share)
+    [JsonPropertyName("latitude")]
+    public double? Latitude { get; set; }
+
+    [JsonPropertyName("longitude")]
+    public double? Longitude { get; set; }
+
+    [JsonPropertyName("location_name")]
+    public string? LocationName { get; set; }
+
+    [JsonPropertyName("location_address")]
+    public string? LocationAddress { get; set; }
 }

@@ -34,7 +34,9 @@ public static class PropertyIntakeStateMachine
 
     private static readonly CultureInfo Mx = CultureInfo.GetCultureInfo("es-MX");
 
-    public static Result Advance(BrokerIntakeState state, string? text, string? mediaId)
+    public sealed record LocationShare(double Latitude, double Longitude, string? Name, string? Address);
+
+    public static Result Advance(BrokerIntakeState state, string? text, string? mediaId, LocationShare? location = null)
     {
         var input = (text ?? "").Trim();
         var norm = TextNormalizer.Normalize(input);
@@ -80,6 +82,24 @@ public static class PropertyIntakeStateMachine
 
             case IntakeSteps.Zone:
                 if (!TrySetZone(data, norm)) { reply = "No reconocí la zona. " + QuestionFor(step, data); error = true; }
+                break;
+
+            case IntakeSteps.Location:
+                // Native WhatsApp location share (preferred), a typed address, or skip.
+                if (location is not null)
+                {
+                    data.Latitude = location.Latitude;
+                    data.Longitude = location.Longitude;
+                    data.Address = location.Address ?? location.Name;
+                    data.LocationDone = true;
+                    break;
+                }
+                if (norm.Contains("sin ubicacion") || norm.Contains("no ubicacion") || norm.Contains("omitir"))
+                { data.LocationDone = true; break; }
+                if (input.Length >= 8)
+                { data.Address = input; data.LocationDone = true; break; }
+                reply = QuestionFor(step, data);
+                error = true;
                 break;
 
             case IntakeSteps.Price:
@@ -212,6 +232,12 @@ public static class PropertyIntakeStateMachine
                 data.PhotosDone = false;
                 return Stay(state, data, IntakeSteps.Photo,
                     "📸 Manda más fotos (se suman a las que ya tienes) y escribe *listo* para volver al resumen");
+            case "ubicacion":
+                data.LocationDone = false;
+                data.Latitude = null;
+                data.Longitude = null;
+                data.Address = null;
+                return Stay(state, data, IntakeSteps.Location, QuestionFor(IntakeSteps.Location, data));
             default:
                 return Stay(state, data, IntakeSteps.Confirm,
                     "No entendí. Responde *confirmar* para guardar, *cancelar* para descartar, " +
@@ -232,6 +258,9 @@ public static class PropertyIntakeStateMachine
             _ => $"💰 Precio: ${(data.Price ?? 0).ToString("N0", Mx)} MXN",
         };
         var video = data.VideoUrl is null ? "sin video" : data.VideoUrl;
+        var locationLine = data.Latitude.HasValue
+            ? "ubicación compartida 📌" + (data.Address is null ? "" : $" ({data.Address})")
+            : data.Address ?? "sin ubicación";
         return
             $"""
             📋 *Revisa los datos antes de guardar:*
@@ -239,6 +268,7 @@ public static class PropertyIntakeStateMachine
             🏷 Operación: {data.ListingType}
             🏠 Tipo: {data.Type}
             📍 Zona: {data.Zone}
+            🗺 Ubicación: {locationLine}
             {priceLine}
             🛏 Recámaras: {data.Bedrooms}
             🚿 Baños: {data.Bathrooms}
@@ -247,7 +277,7 @@ public static class PropertyIntakeStateMachine
             🎥 {video}
 
             ✅ Responde *confirmar* para guardar
-            ✏️ O corrige un campo: *baños 1*, *precio 2500000*, *zona tulum*, *recamaras 2*, *descripcion ...*, *fotos*
+            ✏️ O corrige un campo: *baños 1*, *precio 2500000*, *zona tulum*, *recamaras 2*, *descripcion ...*, *fotos*, *ubicacion*
             ❌ *cancelar* para descartar todo
             """;
     }
@@ -256,9 +286,9 @@ public static class PropertyIntakeStateMachine
 
     private static readonly string[] Chain =
     [
-        IntakeSteps.ListingTypeStep, IntakeSteps.Type, IntakeSteps.Zone, IntakeSteps.Price,
-        IntakeSteps.RentPrice, IntakeSteps.Bedrooms, IntakeSteps.Bathrooms, IntakeSteps.Photo,
-        IntakeSteps.Description, IntakeSteps.Video,
+        IntakeSteps.ListingTypeStep, IntakeSteps.Type, IntakeSteps.Zone, IntakeSteps.Location,
+        IntakeSteps.Price, IntakeSteps.RentPrice, IntakeSteps.Bedrooms, IntakeSteps.Bathrooms,
+        IntakeSteps.Photo, IntakeSteps.Description, IntakeSteps.Video,
     ];
 
     /// <summary>First unfilled field after the current step; Confirm when nothing remains.</summary>
@@ -277,6 +307,7 @@ public static class PropertyIntakeStateMachine
         IntakeSteps.ListingTypeStep => d.ListingType is null,
         IntakeSteps.Type => d.Type is null,
         IntakeSteps.Zone => d.Zone is null,
+        IntakeSteps.Location => !d.LocationDone,
         IntakeSteps.Price => d.ListingType == "renta" ? d.RentPrice is null : d.Price is null,
         IntakeSteps.RentPrice => d.ListingType == "ambos" && d.RentPrice is null,
         IntakeSteps.Bedrooms => d.Bedrooms is null,
@@ -291,7 +322,8 @@ public static class PropertyIntakeStateMachine
     {
         IntakeSteps.Type => IntakeSteps.ListingTypeStep,
         IntakeSteps.Zone => IntakeSteps.Type,
-        IntakeSteps.Price => IntakeSteps.Zone,
+        IntakeSteps.Location => IntakeSteps.Zone,
+        IntakeSteps.Price => IntakeSteps.Location,
         IntakeSteps.RentPrice => IntakeSteps.Price,
         IntakeSteps.Bedrooms => d.ListingType == "ambos" ? IntakeSteps.RentPrice : IntakeSteps.Price,
         IntakeSteps.Bathrooms => IntakeSteps.Bedrooms,
@@ -308,6 +340,9 @@ public static class PropertyIntakeStateMachine
         IntakeSteps.ListingTypeStep => "¿Es para *venta*, *renta* o *ambos*?",
         IntakeSteps.Type => "¿Qué tipo de propiedad es? Escribe: *casa*, *depto*, *terreno* o *comercial*",
         IntakeSteps.Zone => "¿En qué zona está?\n(Cancún Centro / Zona Hotelera / Playa del Carmen / Tulum / Puerto Morelos)",
+        IntakeSteps.Location => "📍 Comparte la ubicación exacta de la propiedad con el botón de abajo " +
+                                "(se le enviará al cliente cuando confirme su visita).\n" +
+                                "También puedes escribir la dirección, o *sin ubicación* para omitir.",
         IntakeSteps.Price => d.ListingType == "renta"
             ? "¿Cuál es la renta mensual en MXN?\nSolo números, sin comas (ej: *15000*)"
             : "¿Cuál es el precio de venta en MXN?\nSolo números, sin comas (ej: *2500000*)",

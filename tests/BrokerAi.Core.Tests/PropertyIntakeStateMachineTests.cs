@@ -59,13 +59,52 @@ public class PropertyIntakeStateMachineTests
     [InlineData("playa del carmen", Zones.PlayaDelCarmen)]
     [InlineData("tulum", Zones.Tulum)]
     [InlineData("puerto morelos", Zones.PuertoMorelos)]
-    public void Zone_ValidInput_AdvancesToPrice(string input, string expectedZone)
+    public void Zone_ValidInput_AdvancesToLocation(string input, string expectedZone)
     {
         var data = new IntakeData { ListingType = "venta" };
         var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Zone, data), input, null);
 
-        result.NextState.Step.Should().Be(IntakeSteps.Price);
+        result.NextState.Step.Should().Be(IntakeSteps.Location, "exact location comes right after the zone");
         result.NextState.Data.Zone.Should().Be(expectedZone);
+    }
+
+    [Fact]
+    public void Location_NativeShare_StoresCoordinatesAndAdvances()
+    {
+        var data = new IntakeData { ListingType = "venta", Type = "casa", Zone = Zones.Tulum };
+        var share = new PropertyIntakeStateMachine.LocationShare(21.161, -86.851, "Residencial X", "Av. Kabah 123");
+
+        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Location, data), null, null, share);
+
+        result.Error.Should().BeFalse();
+        result.NextState.Step.Should().Be(IntakeSteps.Price);
+        result.NextState.Data.Latitude.Should().Be(21.161);
+        result.NextState.Data.Longitude.Should().Be(-86.851);
+        result.NextState.Data.Address.Should().Be("Av. Kabah 123");
+    }
+
+    [Fact]
+    public void Location_TypedAddress_StoresAddressAndAdvances()
+    {
+        var data = new IntakeData { ListingType = "venta", Type = "casa", Zone = Zones.Tulum };
+
+        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Location, data), "Calle 10 Norte 245, Centro", null);
+
+        result.NextState.Step.Should().Be(IntakeSteps.Price);
+        result.NextState.Data.Address.Should().Be("Calle 10 Norte 245, Centro");
+        result.NextState.Data.Latitude.Should().BeNull();
+    }
+
+    [Fact]
+    public void Location_SinUbicacion_SkipsAndAdvances()
+    {
+        var data = new IntakeData { ListingType = "venta", Type = "casa", Zone = Zones.Tulum };
+
+        var result = PropertyIntakeStateMachine.Advance(AtStep(IntakeSteps.Location, data), "sin ubicación", null);
+
+        result.NextState.Step.Should().Be(IntakeSteps.Price);
+        result.NextState.Data.LocationDone.Should().BeTrue();
+        result.NextState.Data.Latitude.Should().BeNull();
     }
 
     [Fact]
@@ -250,13 +289,13 @@ public class PropertyIntakeStateMachineTests
     [Fact]
     public void Atras_GoesBackOneStepAndReasksQuestion()
     {
-        var data = new IntakeData { ListingType = "venta", Type = "casa", Zone = Zones.Tulum };
+        var data = new IntakeData { ListingType = "venta", Type = "casa", Zone = Zones.Tulum, LocationDone = true };
         var state = new BrokerIntakeState { Step = IntakeSteps.Price, Data = data };
 
         var result = PropertyIntakeStateMachine.Advance(state, "atras", null);
 
-        result.NextState.Step.Should().Be(IntakeSteps.Zone);
-        result.Reply.Should().Contain("zona");
+        result.NextState.Step.Should().Be(IntakeSteps.Location, "location sits between zone and price");
+        result.Reply.Should().Contain("ubicación");
     }
 
     [Fact]
@@ -276,6 +315,7 @@ public class PropertyIntakeStateMachineTests
         state = Step(state, "venta");
         state = Step(state, "casa");
         state = Step(state, "tulum");
+        state = Step(state, "sin ubicación");
         state = Step(state, "2500000");
         state = Step(state, "3");
         state = Step(state, "2");
@@ -306,6 +346,7 @@ public class PropertyIntakeStateMachineTests
             ListingType = "venta",
             Type = "casa",
             Zone = Zones.Tulum,
+            LocationDone = true,
             Price = 2_500_000,
             Bedrooms = 3,
             Bathrooms = 2,
