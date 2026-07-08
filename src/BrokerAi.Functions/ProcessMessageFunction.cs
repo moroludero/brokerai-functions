@@ -217,9 +217,25 @@ public sealed class ProcessMessageFunction(
                     lead.Name ?? "Lead", PhoneNumbers.ToDialableMx(lead.Phone), ct);
             }
 
-            var closing = "¡Gracias! Un asesor te contactará pronto para coordinar tu visita. 🏠";
+            // Handoff best practice: announce WHO will contact them (by name) and
+            // when, then share the broker's contact card so the lead saves it and
+            // recognizes the incoming message instead of distrusting an unknown number.
+            string closing;
+            if (isHot)
+            {
+                var leadFirstName = string.IsNullOrWhiteSpace(lead.Name) ? "" : $", {lead.Name.Trim().Split(' ')[0]}";
+                closing = $"¡Gracias{leadFirstName}! 🙌 *{broker.Name}* te va a escribir en breve para confirmar tu visita. " +
+                          $"Te comparto su contacto para que sepas quién te escribirá 👇";
+            }
+            else
+            {
+                closing = "¡Gracias! Un asesor te contactará pronto para coordinar tu visita. 🏠";
+            }
             session.Context.History.Add(new TurnRecord { Role = "assistant", Content = closing });
             await sender.SendTextAsync(msg.PhoneNumberId, msg.From, closing, ct);
+            if (isHot)
+                await sender.SendContactCardAsync(msg.PhoneNumberId, msg.From,
+                    broker.Name, PhoneNumbers.ToDialableMx(broker.AlertNumber), ct);
         }
         else
         {
